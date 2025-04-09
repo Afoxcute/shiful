@@ -11,12 +11,22 @@ import { DetectionRequest, DetectionResponse } from './dtos'
  * https://github.com/ironblocks/venn-custom-detection/blob/master/docs/requests-responses.docs.md
  */
 export class DetectionService {
-    // Contract function signatures
+    // Contract function signatures - both official and potential hidden ones
     private static readonly FUNCTION_SIGNATURES = {
+        // Official functions in the contract
         CREATE_GAME: '0x25aa99cd', // createGame(GameType)
         JOIN_GAME: '0xee9a31a2',   // joinGame(uint256)
         MAKE_MOVE: '0x57a33a7c',   // makeMove(uint256,Choice)
-        END_GAME: '0x3e4372d0'     // _endGame(uint256) - private, shouldn't be callable directly
+        END_GAME: '0x3e4372d0',    // _endGame(uint256) - private, shouldn't be callable directly
+        
+        // Administrative functions
+        TRANSFER_OWNERSHIP: '0xf2fde38b', // transferOwnership(address)
+        SET_CREATOR_FEE: '0x7917eebd', // setCreatorFee(uint256) - hypothetical
+        UPGRADE_CONTRACT: '0x99a88ec4', // upgrade(uint256) - hypothetical
+        MODIFY_AUTH: '0xba75bbd8', // modifyAuth(uint256,uint256) - hypothetical
+        
+        // Potential hidden admin functions  
+        EMERGENCY_WITHDRAW: '0xb7a52e03' // emergencyWithdraw(address) - hypothetical backdoor
     };
 
     // Game Choice enum values
@@ -28,22 +38,23 @@ export class DetectionService {
     };
 
     /**
-     * Detects unusual or potentially malicious transaction patterns for the
-     * RockPaperScissors game contract.
+     * Detects potential security threats, hidden risks, and unauthorized fund access
+     * in the RockPaperScissors contract.
      * 
-     * Focuses on multisig security by checking for:
-     * 1. Unauthorized players attempting moves
-     * 2. Rapid sequential moves (potential double-signing)
-     * 3. Unusual stake patterns
-     * 4. Frontrunning attacks
-     * 5. Direct calls to private functions (contract manipulation)
+     * This version focuses on detecting:
+     * 1. Unauthorized admin operations that could drain funds
+     * 2. Storage manipulation that could redirect payouts
+     * 3. Attempts to disable withdrawal mechanisms
+     * 4. Multisig requirement bypassing
+     * 5. Hidden admin functions that could extract funds
+     * 6. Suspicious ownership transfers
      * 
      * @param request The detection request containing transaction details
      * @returns DetectionResponse with detection results
      */
     public static detect(request: DetectionRequest): DetectionResponse {
         // Extract key information
-        const { from, to, input, calls } = request.trace;
+        const { from, to, input } = request.trace;
         
         // Skip detection for transactions not related to our contract
         if (to.toLowerCase() !== request.protocolAddress?.toLowerCase()) {
@@ -53,250 +64,232 @@ export class DetectionService {
         // Extract function signature (first 4 bytes of calldata)
         const functionSignature = input.slice(0, 10);
         
-        // Check for premature game ending attempts FIRST
-        // This has higher priority than the direct private function call check
-        if (this.isAttemptToEndGamePrematurely(functionSignature, request)) {
+        // Check for unauthorized creator fee changes
+        if (this.isUnauthorizedCreatorFeeChange(functionSignature, from, request)) {
             return this.createResponse(
                 request, 
                 true, 
-                'Attempt to end game prematurely detected'
+                'Unauthorized attempt to change creator fee'
             );
         }
-
-        // Check for direct calls to private functions
-        if (this.isDirectPrivateFunctionCall(functionSignature)) {
+        
+        // Check for suspicious storage modifications that would redirect funds
+        if (this.hasSuspiciousStorageModifications(request)) {
             return this.createResponse(
                 request, 
                 true, 
-                'Suspicious direct call to private function detected'
+                'Suspicious storage modification detected'
             );
         }
-
-        // Check for unauthorized players
-        if (this.isUnauthorizedPlayerMove(functionSignature, from, request)) {
+        
+        // Check for attempts to disable withdrawals
+        if (this.isAttemptToDisableWithdrawals(functionSignature, request)) {
             return this.createResponse(
                 request, 
                 true, 
-                'Unauthorized player attempting to make move'
+                'Attempt to disable withdrawals detected'
             );
         }
-
-        // Check for rapid sequential moves
-        if (this.isRapidSequentialMoves(calls, from)) {
+        
+        // Check for multisig authorization changes or bypasses
+        if (this.isInsufficientMultisigAuthorization(functionSignature, request)) {
             return this.createResponse(
                 request, 
                 true, 
-                'Suspicious rapid sequential moves detected'
+                'Insufficient signatures for multi-signature operation'
             );
         }
-
-        // Check for frontrunning attempts
-        if (this.isPotentialFrontrunning(request)) {
+        
+        // Check for hidden admin functions
+        if (this.isHiddenAdminFunction(functionSignature, request)) {
             return this.createResponse(
                 request, 
                 true, 
-                'Potential frontrunning attack detected'
+                'Hidden admin function detected'
             );
         }
-
-        // Check for unusual stake patterns
-        if (this.hasUnusualStakePattern(functionSignature, request)) {
+        
+        // Check for suspicious ownership transfers
+        if (this.isSuspiciousOwnershipTransfer(functionSignature, request)) {
             return this.createResponse(
                 request, 
                 true, 
-                'Unusual stake pattern detected'
+                'Ownership transfer to high-risk address detected'
             );
         }
 
         // No suspicious activity detected
         return this.createResponse(request, false);
     }
-
+    
     /**
-     * Checks if the transaction is attempting to directly call a private function
+     * Checks if a transaction is attempting to change the creator fee by a non-owner
+     * which could allow draining funds through fees
      * 
      * @param functionSignature The function signature from input data
-     * @returns True if a private function is being called directly
+     * @param from Address initiating the transaction
+     * @param request Full detection request
+     * @returns True if unauthorized fee change detected
      */
-    private static isDirectPrivateFunctionCall(functionSignature: string): boolean {
-        // Check for private function signatures (like _endGame)
-        return functionSignature === this.FUNCTION_SIGNATURES.END_GAME;
-    }
-
-    /**
-     * Checks if a transaction is trying to end a game before it's properly finished
-     * according to game rules.
-     * 
-     * @param functionSignature The function signature from input data
-     * @param request The full detection request
-     * @returns True if attempting to end game prematurely
-     */
-    private static isAttemptToEndGamePrematurely(
-        functionSignature: string, 
-        request: DetectionRequest
-    ): boolean {
-        // If signature doesn't match end game, return false
-        if (functionSignature !== this.FUNCTION_SIGNATURES.END_GAME) {
-            return false;
-        }
-
-        // Check if additionalData contains game state
-        const gameState = request.additionalData?.gameState as any;
-        if (!gameState) {
-            return false;
-        }
-
-        // Game can only end when roundsPlayed indicates game should be over
-        const { roundsPlayed, scores, gameType } = gameState;
-        
-        if (gameType === 0) { // OneRound
-            return roundsPlayed < 1;
-        } else if (gameType === 1) { // BestOfThree
-            return scores[0] < 2 && scores[1] < 2;
-        } else { // BestOfFive
-            return scores[0] < 3 && scores[1] < 3;
-        }
-    }
-
-    /**
-     * Checks if the transaction is from an unauthorized player
-     * by comparing the sender against the registered players for the game.
-     * 
-     * @param functionSignature The function signature from input data
-     * @param from The address sending the transaction
-     * @param request The full detection request
-     * @returns True if sender is not an authorized player for the game
-     */
-    private static isUnauthorizedPlayerMove(
+    private static isUnauthorizedCreatorFeeChange(
         functionSignature: string,
-        from: string, 
+        from: string,
         request: DetectionRequest
     ): boolean {
-        // Only check makeMove function calls
-        if (functionSignature !== this.FUNCTION_SIGNATURES.MAKE_MOVE) {
+        // Not a fee change, return false
+        if (functionSignature !== this.FUNCTION_SIGNATURES.SET_CREATOR_FEE) {
             return false;
         }
-
-        // Extract game state from additional data if available
-        const gameState = request.additionalData?.gameState as any;
-        if (!gameState || !gameState.players) {
+        
+        // Extract contract state from additional data
+        const contractState = request.additionalData?.contractState as any;
+        if (!contractState || !contractState.owner) {
             return false;
         }
-
-        // Check if sender is one of the registered players
-        const players = gameState.players as string[];
-        return !players.some(player => 
-            player.toLowerCase() === from.toLowerCase()
-        );
+        
+        // Check if sender is authorized
+        const contractOwner = contractState.owner;
+        
+        // If sender is not owner, this is unauthorized
+        return from.toLowerCase() !== contractOwner.toLowerCase();
     }
-
+    
     /**
-     * Checks for rapid sequential moves from the same player,
-     * which could indicate an attack or double-signing issue.
+     * Checks for suspicious storage modifications that would redirect funds
+     * by manipulating player addresses or other critical storage
      * 
-     * @param calls Array of calls in the transaction
-     * @param from The address sending the transaction
-     * @returns True if rapid sequential moves from same address are detected
+     * @param request Full detection request
+     * @returns True if suspicious storage modifications detected
      */
-    private static isRapidSequentialMoves(
-        calls?: DetectionRequest['trace']['calls'],
-        from?: string
-    ): boolean {
-        if (!calls || calls.length < 2 || !from) {
-            return false;
-        }
-
-        // Look for multiple calls from the same address
-        const callsFromSameAddress = calls.filter(call => 
-            call.from.toLowerCase() === from.toLowerCase()
-        );
-
-        // If we have multiple calls from the same address, this is suspicious
-        return callsFromSameAddress.length >= 2;
-    }
-
-    /**
-     * Detects potential frontrunning attacks by examining gas price
-     * and timing relative to other pending transactions.
-     * 
-     * @param request The full detection request
-     * @returns True if frontrunning patterns are detected
-     */
-    private static isPotentialFrontrunning(request: DetectionRequest): boolean {
-        // Check for additional frontrunning indicators
-        const additionalData = request.additionalData;
-        if (!additionalData) {
-            return false;
-        }
-
-        // Check for high gas price (potential frontrunning indicator)
-        const gasPrice = additionalData.gasPrice as string;
-        const pendingTransactions = additionalData.pendingTransactions as any[];
-        const timingData = additionalData.timingData as any;
-        
-        if (!gasPrice || !pendingTransactions || !timingData) {
+    private static hasSuspiciousStorageModifications(request: DetectionRequest): boolean {
+        // Check for storage modifications in additional data
+        const storageModifications = request.additionalData?.storageModifications as any[];
+        if (!storageModifications || !Array.isArray(storageModifications)) {
             return false;
         }
         
-        // If gas price is abnormally high and there are pending transactions
-        // from other players, and the time delta is small, suspect frontrunning
-        const isHighGasPrice = BigInt(gasPrice) > BigInt(30000000000); // > 30 Gwei
-        const hasRecentPendingTx = pendingTransactions.length > 0;
-        const isQuickSubmission = timingData.submissionTimeDelta < 2; // Less than 2 seconds
-        
-        return isHighGasPrice && hasRecentPendingTx && isQuickSubmission;
-    }
-
-    /**
-     * Detects unusual stake patterns that may indicate automated exploitation
-     * or other suspicious activity.
-     * 
-     * @param functionSignature The function signature from input data
-     * @param request The full detection request
-     * @returns True if unusual stake patterns are detected
-     */
-    private static hasUnusualStakePattern(
-        functionSignature: string,
-        request: DetectionRequest
-    ): boolean {
-        // Only check game creation calls
-        if (functionSignature !== this.FUNCTION_SIGNATURES.CREATE_GAME) {
-            return false;
-        }
-
-        // Check for game creation history
-        const additionalData = request.additionalData;
-        if (!additionalData || !additionalData.gameCreationHistory) {
-            return false;
-        }
-
-        const history = additionalData.gameCreationHistory as any[];
-        if (history.length < 5) {
-            return false;
-        }
-
-        // Look for patterns in time and stake
-        const timeDeltas: number[] = [];
-        let sameStakeCount = 0;
-        const firstStake = history[0].stake;
-        
-        // Calculate time deltas between consecutive games
-        for (let i = 1; i < history.length; i++) {
-            timeDeltas.push(history[i].timestamp - history[i-1].timestamp);
-            if (history[i].stake === firstStake) {
-                sameStakeCount++;
+        // Check each storage modification
+        for (const mod of storageModifications) {
+            // If original and modified values differ, this is suspicious
+            if (mod.originalValue !== mod.modifiedValue) {
+                return true;
             }
         }
         
-        // Check for consistent time intervals (automated creation)
-        const avgTimeDelta = timeDeltas.reduce((sum, delta) => sum + delta, 0) / timeDeltas.length;
-        const timeConsistency = timeDeltas.every(delta => 
-            Math.abs(delta - avgTimeDelta) < avgTimeDelta * 0.3
-        );
+        return false;
+    }
+    
+    /**
+     * Checks if a transaction is attempting to disable withdrawal functionality
+     * through contract upgrades or modifications
+     * 
+     * @param functionSignature The function signature from input data
+     * @param request Full detection request
+     * @returns True if attempt to disable withdrawals detected
+     */
+    private static isAttemptToDisableWithdrawals(
+        functionSignature: string,
+        request: DetectionRequest
+    ): boolean {
+        // Not an upgrade function, return false
+        if (functionSignature !== this.FUNCTION_SIGNATURES.UPGRADE_CONTRACT) {
+            return false;
+        }
         
-        // If time between creations is very consistent AND stakes are the same,
-        // this suggests automated exploitation
-        return timeConsistency && sameStakeCount >= history.length - 1;
+        // Extract contract modification details
+        const contractMod = request.additionalData?.contractModification as any;
+        if (!contractMod || !contractMod.codeAnalysis) {
+            return false;
+        }
+        
+        // Check if new implementation blocks withdrawals
+        const analysis = contractMod.codeAnalysis;
+        
+        return analysis.withdrawalBlocked === true || 
+               analysis.hasWithdrawalFunction === false;
+    }
+    
+    /**
+     * Checks if a transaction lacks sufficient signatures for a multisig operation
+     * which could indicate an attempt to bypass security controls
+     * 
+     * @param functionSignature The function signature from input data
+     * @param request Full detection request
+     * @returns True if insufficient signatures detected
+     */
+    private static isInsufficientMultisigAuthorization(
+        functionSignature: string,
+        request: DetectionRequest
+    ): boolean {
+        // Only check for auth modification functions
+        if (functionSignature !== this.FUNCTION_SIGNATURES.MODIFY_AUTH) {
+            return false;
+        }
+        
+        // Extract multisig info
+        const multisigInfo = request.additionalData?.multisigInfo as any;
+        if (!multisigInfo) {
+            return false;
+        }
+        
+        // Check if provided signatures are less than required
+        return multisigInfo.providedSignatures < multisigInfo.requiredSignatures;
+    }
+    
+    /**
+     * Checks if a transaction is calling a hidden admin function
+     * that could be used to extract funds without proper oversight
+     * 
+     * @param functionSignature The function signature from input data
+     * @param request Full detection request
+     * @returns True if hidden admin function detected
+     */
+    private static isHiddenAdminFunction(
+        functionSignature: string,
+        request: DetectionRequest
+    ): boolean {
+        // Check if this is a known hidden function
+        if (functionSignature !== this.FUNCTION_SIGNATURES.EMERGENCY_WITHDRAW) {
+            return false;
+        }
+        
+        // Get function analysis if available
+        const functionAnalysis = request.additionalData?.functionAnalysis as any;
+        if (!functionAnalysis) {
+            return false;
+        }
+        
+        // Check if function is high risk and can transfer funds
+        return functionAnalysis.riskLevel === 'high' && 
+               functionAnalysis.canTransferFunds === true &&
+               functionAnalysis.isDocumented === false;
+    }
+    
+    /**
+     * Checks if ownership is being transferred to a suspicious or high-risk address
+     * which could indicate an attempt to take over the contract
+     * 
+     * @param functionSignature The function signature from input data
+     * @param request Full detection request
+     * @returns True if suspicious ownership transfer detected
+     */
+    private static isSuspiciousOwnershipTransfer(
+        functionSignature: string,
+        request: DetectionRequest
+    ): boolean {
+        // Not an ownership transfer, return false
+        if (functionSignature !== this.FUNCTION_SIGNATURES.TRANSFER_OWNERSHIP) {
+            return false;
+        }
+        
+        // Extract address risk information
+        const addressRisk = request.additionalData?.addressRisk as any;
+        if (!addressRisk || !addressRisk.riskScore) {
+            return false;
+        }
+        
+        // Check if risk score exceeds threshold (75 out of 100)
+        return addressRisk.riskScore > 75;
     }
 
     /**

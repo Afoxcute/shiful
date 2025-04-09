@@ -11,6 +11,7 @@ const contractAddress = '0x7296c77Edd04092Fd6a8117c7f797E0680d97fa1' // RPS cont
 const player1Address = '0xD8dA6BF26964aF9D7eEd9e03E53415D37aA96045' // First player
 const player2Address = '0x690B9A9E9aa1C9dB991C7721a92d351Db4FaC990' // Second player
 const maliciousAddress = '0x4206904396d558D6fA240E0F788d30C831D4a6E7' // Malicious actor
+const contractOwner = '0x8A7F7c5b0083eB7f8C3ba11dF9E37a5ac501B972' // Contract owner
 
 describe('Service Tests', () => {
     afterAll(async () => {
@@ -43,11 +44,11 @@ describe('Service Tests', () => {
         })
     })
 
-    describe('RockPaperScissors Detection Tests', () => {
+    describe('RockPaperScissors Security Threats Detection', () => {
         // Base request payload for testing
         const createBaseRequestPayload = (from: string, to: string, input: string): Partial<DetectionRequest> => ({
             id: 'rps-detection-test',
-            detectorName: 'rps-multisig-detector',
+            detectorName: 'rps-security-detector',
             chainId: 17000, // Holesky testnet chainId
             hash: '0x' + Math.random().toString(16).substring(2, 14),
             protocolName: 'RockPaperScissors',
@@ -86,143 +87,27 @@ describe('Service Tests', () => {
         });
 
         /**
-         * Test Case 1: Normal Game Creation
+         * Test Case 1: Attempt to change creator fee by non-owner
          * 
-         * This test verifies a legitimate game creation by player1
-         * Should NOT trigger detection
-         */
-        test('should not detect legitimate game creation', async () => {
-            // Function signature for createGame(GameType.OneRound)
-            const createGameInput = '0x25aa99cd0000000000000000000000000000000000000000000000000000000000000000';
-            
-            const requestPayload = createBaseRequestPayload(
-                player1Address, 
-                contractAddress,
-                createGameInput
-            );
-
-            // Act
-            const response = await request(app)
-                .post('/detect')
-                .send(requestPayload)
-                .set('Content-Type', 'application/json');
-
-            const body: DetectionResponse = response.body;
-
-            // Assert
-            expect(response.status).toBe(HTTP_STATUS_CODES.OK);
-            expect(body.protocolName).toBe(requestPayload.protocolName);
-            expect(body.protocolAddress).toBe(requestPayload.protocolAddress);
-            expect(body.detected).toBe(false); // Should not detect normal game creation
-        });
-
-        /**
-         * Test Case 2: Normal Game Join
-         * 
-         * This test verifies a legitimate game join by player2
-         * Should NOT trigger detection
-         */
-        test('should not detect legitimate game join', async () => {
-            // Function signature for joinGame(1)
-            const joinGameInput = '0xee9a31a20000000000000000000000000000000000000000000000000000000000000001';
-            
-            const requestPayload = createBaseRequestPayload(
-                player2Address, 
-                contractAddress,
-                joinGameInput
-            );
-
-            // Act
-            const response = await request(app)
-                .post('/detect')
-                .send(requestPayload)
-                .set('Content-Type', 'application/json');
-
-            const body: DetectionResponse = response.body;
-
-            // Assert
-            expect(response.status).toBe(HTTP_STATUS_CODES.OK);
-            expect(body.detected).toBe(false); // Should not detect normal game join
-        });
-
-        /**
-         * Test Case 3: Rapid Sequential Moves from Same Player
-         * 
-         * This test simulates an abnormal pattern where the same player 
-         * tries to make multiple moves in quick succession
+         * This test verifies that an unauthorized account cannot modify the creator fee
+         * which would allow funds to be drained from the contract
          * Should trigger detection
          */
-        test('should detect rapid sequential moves from same player', async () => {
-            // Function signature for makeMove(1, Choice.Rock)
-            const makeMoveInput = '0x57a33a7c0000000000000000000000000000000000000000000000000000000000000001' + 
-                              '0000000000000000000000000000000000000000000000000000000000000001'; // Choice.Rock
-            
-            // Create trace with multiple calls from same address in rapid succession
-            const requestPayload = createBaseRequestPayload(
-                player1Address, 
-                contractAddress,
-                makeMoveInput
-            );
-            
-            // Add nested calls to simulate rapid successive moves
-            // This represents a suspicious behavior pattern
-            requestPayload.trace!.calls = [
-                {
-                    from: player1Address,
-                    to: contractAddress,
-                    input: makeMoveInput,
-                    output: '0x0',
-                    gasUsed: '25000',
-                    value: '0',
-                },
-                {
-                    from: player1Address,
-                    to: contractAddress,
-                    input: makeMoveInput,
-                    output: '0x0',
-                    gasUsed: '25000',
-                    value: '0',
-                }
-            ];
-
-            // Act
-            const response = await request(app)
-                .post('/detect')
-                .send(requestPayload)
-                .set('Content-Type', 'application/json');
-
-            const body: DetectionResponse = response.body;
-
-            // Assert
-            expect(response.status).toBe(HTTP_STATUS_CODES.OK);
-            expect(body.detected).toBe(true); // Should detect abnormal behavior
-            expect(body.message).toContain('Suspicious rapid sequential moves detected');
-        });
-
-        /**
-         * Test Case 4: Unauthorized Player Attempting to Make a Move
-         * 
-         * This test simulates an unauthorized player (not player1 or player2)
-         * trying to make a move in a game
-         * Should trigger detection
-         */
-        test('should detect unauthorized player move', async () => {
-            // Function signature for makeMove(1, Choice.Paper)
-            const makeMoveInput = '0x57a33a7c0000000000000000000000000000000000000000000000000000000000000001' + 
-                              '0000000000000000000000000000000000000000000000000000000000000002'; // Choice.Paper
+        test('should detect unauthorized creator fee change', async () => {
+            // Simulated function signature for changing creatorFee (not in actual contract but would be a risk)
+            const setCreatorFeeInput = '0x7917eebd0000000000000000000000000000000000000000000000000000000000000064'; // setCreatorFee(100) - 100%
             
             const requestPayload = createBaseRequestPayload(
-                maliciousAddress, // Unauthorized address 
+                maliciousAddress, 
                 contractAddress,
-                makeMoveInput
+                setCreatorFeeInput
             );
             
-            // Add game state data to additionalData
+            // Add contract state info
             requestPayload.additionalData = {
-                gameState: {
-                    gameId: 1,
-                    players: [player1Address, player2Address],
-                    isActive: true
+                contractState: {
+                    owner: contractOwner,
+                    currentCreatorFee: 25 // Current fee is 2.5%
                 }
             };
 
@@ -236,95 +121,41 @@ describe('Service Tests', () => {
 
             // Assert
             expect(response.status).toBe(HTTP_STATUS_CODES.OK);
-            expect(body.detected).toBe(true); // Should detect unauthorized player
-            expect(body.message).toContain('Unauthorized player attempting to make move');
+            expect(body.detected).toBe(true);
+            expect(body.message).toContain('Unauthorized attempt to change creator fee');
         });
 
         /**
-         * Test Case 5: Attempt to End Game Prematurely
+         * Test Case 2: Suspicious withdrawal pattern
          * 
-         * This test simulates an attempt to end a game before it's properly finished
+         * This test simulates an attempt to drain funds by forcing an early game end
+         * with a tie result that splits funds but manipulates the recipient addresses
          * Should trigger detection
          */
-        test('should detect attempt to end game prematurely', async () => {
-            // Create a custom input that could be attempting to call _endGame directly
-            // This is a private function, but we're simulating a malicious call attempt
-            const endGameInput = '0x3e4372d00000000000000000000000000000000000000000000000000000000000000001';
+        test('should detect suspicious fund withdrawal pattern', async () => {
+            // _endGame function with logic to manipulate withdrawal
+            const maliciousEndGameInput = '0x3e4372d00000000000000000000000000000000000000000000000000000000000000001';
             
             const requestPayload = createBaseRequestPayload(
-                player1Address,
+                maliciousAddress,
                 contractAddress,
-                endGameInput
+                maliciousEndGameInput
             );
             
-            // Add game state data to additionalData to show game is not over
+            // Add storage manipulation that would redirect funds
             requestPayload.additionalData = {
-                gameState: {
-                    gameId: 1,
-                    players: [player1Address, player2Address],
-                    roundsPlayed: 0,
-                    scores: [0, 0],
-                    isActive: true
-                }
-            };
-
-            // Act
-            const response = await request(app)
-                .post('/detect')
-                .send(requestPayload)
-                .set('Content-Type', 'application/json');
-
-            const body: DetectionResponse = response.body;
-
-            // Assert
-            expect(response.status).toBe(HTTP_STATUS_CODES.OK);
-            expect(body.detected).toBe(true); // Should detect premature game ending attempt
-            expect(body.message).toContain('Attempt to end game prematurely detected');
-        });
-
-        /**
-         * Test Case 6: Frontrunning Detection
-         * 
-         * This test simulates a frontrunning attack where an attacker watches the mempool
-         * for a player's move and tries to frontrun it with their own move
-         * Should trigger detection
-         */
-        test('should detect potential frontrunning attack', async () => {
-            // Function signature for makeMove(1, Choice.Scissors)
-            const makeMoveInput = '0x57a33a7c0000000000000000000000000000000000000000000000000000000000000001' + 
-                              '0000000000000000000000000000000000000000000000000000000000000003'; // Choice.Scissors
-            
-            const requestPayload = createBaseRequestPayload(
-                player2Address,
-                contractAddress,
-                makeMoveInput
-            );
-
-            // Add nested calls to simulate frontrunning pattern
-            requestPayload.trace!.calls = [
-                {
-                    from: player2Address,
-                    to: contractAddress,
-                    input: makeMoveInput,
-                    gasUsed: '21000',
-                    value: '0',
-                }
-            ];
-            
-            // Add timing and gas price information that suggests frontrunning
-            requestPayload.additionalData = {
-                gasPrice: '50000000000', // Very high gas price (50 Gwei)
-                pendingTransactions: [
+                storageModifications: [
                     {
-                        from: player1Address,
-                        to: contractAddress,
-                        input: '0x57a33a7c0000000000000000000000000000000000000000000000000000000000000001' +
-                               '0000000000000000000000000000000000000000000000000000000000000001', // player1 making Rock move
-                        gasPrice: '20000000000' // 20 Gwei (lower than attacker)
+                        slot: '0x12', // Hypothetical storage slot for player addresses
+                        originalValue: `0x000000000000000000000000${player1Address.substring(2)}`,
+                        modifiedValue: `0x000000000000000000000000${maliciousAddress.substring(2)}`
                     }
                 ],
-                timingData: {
-                    submissionTimeDelta: 0.5 // Submitted 0.5 seconds after seeing player1's transaction
+                gameState: {
+                    gameId: 1,
+                    players: [player1Address, player2Address],
+                    stake: '1000000000000000000', // 1 ETH
+                    isActive: true
                 }
             };
 
@@ -338,38 +169,39 @@ describe('Service Tests', () => {
 
             // Assert
             expect(response.status).toBe(HTTP_STATUS_CODES.OK);
-            expect(body.detected).toBe(true); // Should detect frontrunning
-            expect(body.message).toContain('Potential frontrunning attack detected');
+            expect(body.detected).toBe(true);
+            expect(body.message).toContain('Suspicious storage modification detected');
         });
 
         /**
-         * Test Case 7: Unusual Stake Pattern
+         * Test Case 3: Owner attempting to disable withdrawals
          * 
-         * This test simulates a player creating multiple games with unusual stake patterns
-         * that might indicate automated exploitation attempts
+         * This test simulates a scenario where the contract owner is trying to 
+         * modify the contract to temporarily or permanently block withdrawals
          * Should trigger detection
          */
-        test('should detect unusual stake patterns', async () => {
-            // Function signature for createGame with BestOfFive
-            const createGameInput = '0x25aa99cd0000000000000000000000000000000000000000000000000000000000000002';
+        test('should detect attempt to disable withdrawals', async () => {
+            // Simulated function for upgrading or modifying contract
+            const upgradeContractInput = '0x99a88ec40000000000000000000000000000000000000000000000000000000000000001';
             
             const requestPayload = createBaseRequestPayload(
-                player1Address,
+                contractOwner,
                 contractAddress,
-                createGameInput
+                upgradeContractInput
             );
             
-            // Add data to show a pattern of many small-stake games being created
+            // Add implementation details that would block withdrawals
             requestPayload.additionalData = {
-                gameCreationHistory: [
-                    { gameId: 120, stake: '100000000000000', timestamp: Date.now() - 30000 },
-                    { gameId: 121, stake: '100000000000000', timestamp: Date.now() - 25000 },
-                    { gameId: 122, stake: '100000000000000', timestamp: Date.now() - 20000 },
-                    { gameId: 123, stake: '100000000000000', timestamp: Date.now() - 15000 },
-                    { gameId: 124, stake: '100000000000000', timestamp: Date.now() - 10000 },
-                    { gameId: 125, stake: '100000000000000', timestamp: Date.now() - 5000 }
-                ],
-                suspiciousPattern: 'rapid small-stake game creation'
+                contractModification: {
+                    type: 'upgrade',
+                    newImplementation: '0xC8F68Eccf2F05F32d29A8e949fDA3A222f6a9Bd7',
+                    codeAnalysis: {
+                        hasSelfDestruct: false,
+                        hasWithdrawalFunction: false, // New implementation missing withdrawal
+                        hasTimelock: true,
+                        withdrawalBlocked: true
+                    }
+                }
             };
 
             // Act
@@ -382,8 +214,177 @@ describe('Service Tests', () => {
 
             // Assert
             expect(response.status).toBe(HTTP_STATUS_CODES.OK);
-            expect(body.detected).toBe(true); // Should detect unusual pattern
-            expect(body.message).toContain('Unusual stake pattern detected');
+            expect(body.detected).toBe(true);
+            expect(body.message).toContain('Attempt to disable withdrawals detected');
+        });
+
+        /**
+         * Test Case 4: Multisig authorization hijacking
+         * 
+         * This test simulates an attack where a transaction attempts to 
+         * change the requirements for signatures/authorization
+         * Should trigger detection
+         */
+        test('should detect multisig authorization changes', async () => {
+            // Function to modify the game players' authorization requirements
+            const modifyAuthInput = '0xba75bbd80000000000000000000000000000000000000000000000000000000000000001' +
+                               '0000000000000000000000000000000000000000000000000000000000000001'; // Reduce required auth
+            
+            const requestPayload = createBaseRequestPayload(
+                maliciousAddress,
+                contractAddress,
+                modifyAuthInput
+            );
+            
+            // This would be a privileged operation requiring both player signatures
+            requestPayload.additionalData = {
+                multisigInfo: {
+                    requiredSignatures: 2,
+                    providedSignatures: 1,
+                    signers: [maliciousAddress],
+                    authorizedSigners: [player1Address, player2Address]
+                }
+            };
+
+            // Act
+            const response = await request(app)
+                .post('/detect')
+                .send(requestPayload)
+                .set('Content-Type', 'application/json');
+
+            const body: DetectionResponse = response.body;
+
+            // Assert
+            expect(response.status).toBe(HTTP_STATUS_CODES.OK);
+            expect(body.detected).toBe(true);
+            expect(body.message).toContain('Insufficient signatures for multi-signature operation');
+        });
+
+        /**
+         * Test Case 5: Hidden admin function detection
+         * 
+         * This test verifies that hidden or backdoor admin functions 
+         * that could be used to extract funds are detected
+         * Should trigger detection
+         */
+        test('should detect calls to hidden admin functions', async () => {
+            // A function signature that's not documented or appears innocuous
+            const hiddenAdminFuncInput = '0xb7a52e03000000000000000000000000c8f68eccf2f05f32d29a8e949fda3a222f6a9bd7';
+            
+            const requestPayload = createBaseRequestPayload(
+                contractOwner,
+                contractAddress,
+                hiddenAdminFuncInput
+            );
+            
+            // Add analysis that reveals this is an uncommon function
+            requestPayload.additionalData = {
+                functionAnalysis: {
+                    functionName: 'emergencyWithdraw',
+                    visibility: 'external',
+                    isDocumented: false,
+                    callCount: 0, // Never been called before
+                    accessControl: 'owner',
+                    riskLevel: 'high',
+                    canTransferFunds: true
+                }
+            };
+
+            // Act
+            const response = await request(app)
+                .post('/detect')
+                .send(requestPayload)
+                .set('Content-Type', 'application/json');
+
+            const body: DetectionResponse = response.body;
+
+            // Assert
+            expect(response.status).toBe(HTTP_STATUS_CODES.OK);
+            expect(body.detected).toBe(true);
+            expect(body.message).toContain('Hidden admin function detected');
+        });
+
+        /**
+         * Test Case 6: Ownership transfer to suspicious address
+         * 
+         * This test confirms detection of ownership being transferred to 
+         * a suspicious or high-risk address
+         * Should trigger detection
+         */
+        test('should detect ownership transfer to suspicious address', async () => {
+            // Function signature for transferOwnership
+            const transferOwnershipInput = '0xf2fde38b000000000000000000000000c8f68eccf2f05f32d29a8e949fda3a222f6a9bd7';
+            
+            const requestPayload = createBaseRequestPayload(
+                contractOwner,
+                contractAddress,
+                transferOwnershipInput
+            );
+            
+            // Add risk score for the new owner address
+            requestPayload.additionalData = {
+                addressRisk: {
+                    address: '0xC8F68Eccf2F05F32d29A8e949fDA3A222f6a9Bd7',
+                    riskScore: 85, // High risk score
+                    riskFactors: [
+                        'associated_with_hacks',
+                        'newly_created',
+                        'low_transaction_history',
+                        'mixer_interaction'
+                    ],
+                    analysis: 'Address exhibits multiple high-risk characteristics'
+                }
+            };
+
+            // Act
+            const response = await request(app)
+                .post('/detect')
+                .send(requestPayload)
+                .set('Content-Type', 'application/json');
+
+            const body: DetectionResponse = response.body;
+
+            // Assert
+            expect(response.status).toBe(HTTP_STATUS_CODES.OK);
+            expect(body.detected).toBe(true);
+            expect(body.message).toContain('Ownership transfer to high-risk address detected');
+        });
+
+        /**
+         * Test Case 7: Legitimate owner operation
+         * 
+         * This test verifies that legitimate owner operations don't trigger false positives
+         * Should NOT trigger detection
+         */
+        test('should not detect legitimate owner operations', async () => {
+            // Function to change creator fee by legitimate owner
+            const setCreatorFeeInput = '0x7917eebd0000000000000000000000000000000000000000000000000000000000000019'; // setCreatorFee(25) - 2.5%
+            
+            const requestPayload = createBaseRequestPayload(
+                contractOwner,
+                contractAddress,
+                setCreatorFeeInput
+            );
+            
+            // Add contract state info
+            requestPayload.additionalData = {
+                contractState: {
+                    owner: contractOwner,
+                    currentCreatorFee: 25 // Keeping the same fee
+                }
+            };
+
+            // Act
+            const response = await request(app)
+                .post('/detect')
+                .send(requestPayload)
+                .set('Content-Type', 'application/json');
+
+            const body: DetectionResponse = response.body;
+
+            // Assert
+            expect(response.status).toBe(HTTP_STATUS_CODES.OK);
+            expect(body.detected).toBe(false);
         });
     });
 
