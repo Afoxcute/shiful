@@ -453,7 +453,7 @@ To perform end-to-end testing with the actual contract:
 
 ## Additional Resources
 
-- [RockPaperScissors Contract Documentation](https://scan.test.btcs.network/address/0x7296c77Edd04092Fd6a8117c7f797E0680d97fa1)
+- [RockPaperScissors Contract Documentation](https://holesky.etherscan.io/address/0x7296c77Edd04092Fd6a8117c7f797E0680d97fa1)
 - [Venn Firewall Documentation](https://docs.venn.build/)
 - [Multisig Security Best Practices](https://ethereum.org/en/developers/docs/smart-contracts/security/)
 
