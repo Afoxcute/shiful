@@ -4,8 +4,9 @@ pragma solidity ^0.8.26;
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/Address.sol";
+import "@ironblocks/firewall-consumer/contracts/consumers/VennFirewallConsumer.sol";
 
-contract RockPaperScissors is ReentrancyGuard, Ownable {
+contract RockPaperScissors is ReentrancyGuard, Ownable, VennFirewallConsumer {
     using Address for address payable;
 
     uint256 public creatorFee = 25;
@@ -55,7 +56,7 @@ contract RockPaperScissors is ReentrancyGuard, Ownable {
         transferOwnership(msg.sender);
     }
 
-    function createGame(GameType _gameType) external payable returns (uint256) {
+    function createGame(GameType _gameType) external payable firewallProtected returns (uint256) {
         require(msg.value > 0, "Stake must be greater than 0");
 
         uint256 gameId = nextGameId++;
@@ -79,7 +80,7 @@ contract RockPaperScissors is ReentrancyGuard, Ownable {
         return gameId;
     }
 
-    function joinGame(uint256 _gameId) external payable {
+    function joinGame(uint256 _gameId) external payable firewallProtected {
         Game storage game = games[_gameId];
         require(game.isActive, "Game is not active");
         require(game.players[1] == address(0), "Game is full");
@@ -91,7 +92,7 @@ contract RockPaperScissors is ReentrancyGuard, Ownable {
         emit GameJoined(_gameId, msg.sender);
     }
 
-    function makeMove(uint256 _gameId, Choice _choice) external {
+    function makeMove(uint256 _gameId, Choice _choice) external firewallProtected {
         Game storage game = games[_gameId];
         require(game.isActive, "Game is not active");
         require(_choice == Choice.Rock || _choice == Choice.Paper || _choice == Choice.Scissors, "Invalid choice");
@@ -145,15 +146,13 @@ contract RockPaperScissors is ReentrancyGuard, Ownable {
         }
     }
 
-function getGameById(uint256 _id) public view returns (Game memory){
+    function getGameById(uint256 _id) public view returns (Game memory){
         return games[_id];
     }
-
 
     function getUserGames(address _user) external view returns (uint256[] memory) {
         return userGames[_user];
     }
-
 
     function getGamesInfo(uint256[] calldata gameIds) external view returns (GameView[] memory) {
         GameView[] memory gameViews = new GameView[](gameIds.length);
@@ -205,7 +204,7 @@ function getGameById(uint256 _id) public view returns (Game memory){
         }
     }
 
-    function _endGame(uint256 _gameId) private nonReentrant {
+    function _endGame(uint256 _gameId) private nonReentrant firewallProtected {
         Game storage game = games[_gameId];
         address winner;
         uint256 payout;
