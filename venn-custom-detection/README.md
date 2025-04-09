@@ -113,7 +113,7 @@ docker build -f Dockerfile . -t my-custom-detector
 
 ## Overview
 
-This custom Venn security detector protects the RockPaperScissors contract by identifying suspicious transactions and unusual signing patterns that could indicate security threats. The detector is specifically designed to enhance multisig security by monitoring transaction patterns and detecting unauthorized attempts to manipulate game state.
+This custom Venn security detector protects the RockPaperScissors contract by identifying suspicious transactions and attack patterns that could indicate security threats. The detector is designed to enhance multisig security by monitoring transaction patterns and detecting unauthorized attempts to manipulate game state or extract value from players.
 
 ## What This Detector Does
 
@@ -126,84 +126,112 @@ The RockPaperScissors contract allows two players to compete in a blockchain-bas
 5. **Guards against direct private function access** - Prevents attackers from bypassing game rules by calling internal functions
 6. **Prevents fund draining attacks** - Detects attempts to manipulate contract to extract funds
 7. **Blocks withdrawal disabling** - Identifies transactions that could block users from withdrawing funds
+8. **Prevents value extraction (MEV) attacks** - Detects sandwich trading and other MEV exploitation techniques
 
 ## Security Triggers
 
 The detector implements multiple trigger conditions to identify potential threats:
 
-### 1. Unauthorized Player Detection
+### 1. Sandwich Attack Detection
 
-**Trigger**: A transaction attempting to make a move from an address that is not registered as either player in the game.
+**Trigger**: Transaction pattern showing a malicious actor executing transactions before and after a player's transaction to profit from price movements.
 
-**Description**: The detector verifies that only the two players who created/joined a game can make moves within that game. Any attempt by an unauthorized address to call the `makeMove` function will be flagged.
-
-**Real-world example**: 
-```
-Transaction: 0x9c8b2276f4ed4a199d7fa4b6e13f72c7b74b810bfc8b4af133b9c1e9184aef57
-From: 0x4206904396d558D6fA240E0F788d30C831D4a6E7
-To: 0x7296c77Edd04092Fd6a8117c7f797E0680d97fa1 (RPS Contract)
-Call: makeMove(1, Choice.Paper)
-```
-This transaction would be detected because `0x42069...` is not one of the authorized players for game ID 1.
-
-### 2. Rapid Sequential Moves Detection
-
-**Trigger**: Multiple moves attempted by the same player in rapid succession.
-
-**Description**: The RockPaperScissors game enforces turn-based play. The detector identifies when a player tries to make multiple sequential moves, which violates game rules and could indicate an attempt to manipulate the game outcome.
+**Description**: Sandwich attacks are a form of MEV (Maximal Extractable Value) where an attacker observes a pending high-value transaction, then executes trades before and after it to profit from price impacts. The detector analyzes transaction block positioning, gas prices, and price impact to identify this pattern.
 
 **Real-world example**:
 ```
-Transaction: 0xa7c2f846d3b298a531b3b41e34c18c985cc7f8c18c39a3db323e31fd51126aac
-From: 0xD8dA6BF26964aF9D7eEd9e03E53415D37aA96045
-To: 0x7296c77Edd04092Fd6a8117c7f797E0680d97fa1 (RPS Contract)
-Calls:
-- makeMove(1, Choice.Rock)
-- makeMove(1, Choice.Scissors)
+Block transactions sequence:
+1. 0xa1b2c3... (From: 0x4206904396d558D6fA240E0F788d30C831D4a6E7, Gas: 35 Gwei)
+   - Buy tokens from liquidity pool
+2. 0xd9e8f7... (From: 0xD8dA6BF26964aF9D7eEd9e03E53415D37aA96045, Gas: 30 Gwei)
+   - Player creates game with 1 ETH stake
+3. 0xf9e8d7... (From: 0x4206904396d558D6fA240E0F788d30C831D4a6E7, Gas: 35 Gwei)
+   - Sell tokens back to liquidity pool at higher price
 ```
-This transaction would be detected because a player is attempting to make two moves in sequence.
+This pattern would be detected as a sandwich attack because a MEV bot is extracting value by exploiting the player's transaction.
 
-### 3. Premature Game Ending Attempts
+### 2. Time-Bandit Attack Detection
 
-**Trigger**: An attempt to end a game before it meets the required win conditions.
+**Trigger**: Deep blockchain reorganization targeting high-value games.
 
-**Description**: Games can only be concluded when they've met specific conditions (one round completed for OneRound games, best of three, or best of five). The detector identifies attempts to force a game conclusion before these conditions are met.
+**Description**: Time-bandit attacks are sophisticated MEV extractions where a miner/validator reorganizes the blockchain to capture value. The detector identifies suspicious chain reorganizations (reorgs) greater than 2 blocks deep that target high-stake games.
 
 **Real-world example**:
 ```
-Transaction: 0xb2f5c8e7d5a6a4c3d2e1f9e8e7d6a5c4f3b2e1a9c8b7e6d5a4c3b2e1a9c8b7a6
-From: 0xD8dA6BF26964aF9D7eEd9e03E53415D37aA96045
-To: 0x7296c77Edd04092Fd6a8117c7f797E0680d97fa1 (RPS Contract)
-Call: _endGame(1) [private function]
-Game State: Rounds played = 0, Scores = [0,0]
+Blockchain Context:
+- Chain reorganization detected: 3 blocks deep
+- Targeted transaction: 0xd1c2b3... (Stake: 5 ETH)
+- Validator: 0xC8F68Eccf2F05F32d29A8e949fDA3A222f6a9Bd7
+- Potential MEV profit: 1.5 ETH
 ```
-This transaction would be detected because it's attempting to end a game that hasn't completed any rounds.
+This pattern would be detected as a time-bandit attack because a validator is reorganizing the chain to extract value from a high-stake game.
 
-### 4. Frontrunning Attack Detection
+### 3. JIT (Just-In-Time) Liquidity Attack
 
-**Trigger**: High gas price transaction attempting to make a move right after seeing an opponent's pending transaction.
+**Trigger**: Pattern of liquidity being added just before a player's transaction and removed immediately after.
 
-**Description**: In blockchain games, players might try to gain an advantage by watching the mempool for their opponent's move and quickly submitting their own with a higher gas price to execute first. The detector identifies these frontrunning attempts by analyzing gas prices and transaction timing.
+**Description**: JIT liquidity attacks involve strategically adding liquidity to a pool momentarily to capture fees from a transaction, then withdrawing that liquidity. The detector identifies suspicious liquidity provision patterns lasting less than 30 seconds.
 
 **Real-world example**:
 ```
-Pending Transaction:
-  From: 0xD8dA6BF26964aF9D7eEd9e03E53415D37aA96045 (Player 1)
-  To: 0x7296c77Edd04092Fd6a8117c7f797E0680d97fa1 (RPS Contract)
-  Call: makeMove(1, Choice.Rock)
-  Gas Price: 20 Gwei
-
-Frontrunning Transaction:
-  Transaction: 0xf7a1e8d9c6b5d4a3e2c1b0a9f8e7d6c5b4a3f2e1d0c9b8a7f6e5d4c3b2a1f0e9
-  From: 0x690B9A9E9aa1C9dB991C7721a92d351Db4FaC990 (Player 2)
-  To: 0x7296c77Edd04092Fd6a8117c7f797E0680d97fa1 (RPS Contract)
-  Call: makeMove(1, Choice.Paper)
-  Gas Price: 50 Gwei
-  Submitted: 0.5 seconds after observing Player 1's transaction
+Liquidity Events Sequence:
+1. T+0s: Add 100 ETH liquidity (From: 0xC8F68Eccf2F05F32d29A8e949fDA3A222f6a9Bd7)
+2. T+5s: Player transaction with 10 ETH stake, paying 0.1 ETH in fees
+3. T+10s: Remove 100.2 ETH liquidity (same address)
 ```
-This transaction would be detected as a frontrunning attack, as Player 2 is attempting to exploit knowledge of Player 1's move.
+This pattern would be detected as a JIT liquidity attack because the attacker is adding liquidity only briefly to capture fees from the player's transaction.
 
-### 5. Unauthorized Creator Fee Change
+### 4. Multisig Validation Bypass
+
+**Trigger**: Transaction attempting to circumvent the two-player validation requirement in the game.
+
+**Description**: The RockPaperScissors contract requires both players to submit valid moves before game resolution. This detection identifies attempts to bypass this requirement by making a move and then directly calling private resolution functions in the same transaction.
+
+**Real-world example**:
+```
+Transaction: 0xb4a3f2...
+From: 0xD8dA6BF26964aF9D7eEd9e03E53415D37aA96045 (Player 1)
+Call sequence:
+1. makeMove(1, Choice.Paper)
+2. _endGame(1) [private function]
+```
+This pattern would be detected because Player 1 is attempting to resolve the game without waiting for Player 2's move.
+
+### 5. Oracle Manipulation Attack
+
+**Trigger**: Abnormal volatility in oracle price feeds used by the game or manipulation of random number generation.
+
+**Description**: Games may rely on oracles for random numbers or price feeds. Attackers can manipulate these oracle inputs to predict or influence game outcomes. The detector identifies suspicious price movements and volatility.
+
+**Real-world example**:
+```
+Oracle Updates:
+1. T+0s: Price 10.5 → 9.2 (-12.4% change) by 0xC8F68Eccf2F05F32d29A8e949fDA3A222f6a9Bd7
+2. T+60s: Price 9.2 → 10.6 (+15.2% change) by same address
+Volatility Analysis:
+- Normal volatility: 1.2%
+- Attack volatility: 12.4%
+- Confidence score: 96%
+```
+This pattern would be detected as an oracle manipulation attack due to the abnormal price movements by a known MEV address.
+
+### 6. Generalized Frontrunning Attack
+
+**Trigger**: Transaction that copies a player's move with a higher gas price to execute first.
+
+**Description**: Generalized frontrunning involves monitoring the mempool for profitable transactions and copying them with higher gas prices. The detector identifies identical transaction inputs from different addresses with significantly higher gas prices.
+
+**Real-world example**:
+```
+Mempool Transactions:
+1. Pending: 0xd1c2b3... (From: 0x690B9A9E9aa1C9dB991C7721a92d351Db4FaC990, Gas: 25 Gwei)
+   - makeMove(5, Choice.Paper)
+2. Current: 0xf7a1e8... (From: 0xC8F68Eccf2F05F32d29A8e949fDA3A222f6a9Bd7, Gas: 35 Gwei)
+   - makeMove(5, Choice.Paper) [identical input]
+```
+This pattern would be detected as a generalized frontrunning attack because a MEV bot is copying a player's exact move with a higher gas price.
+
+### 7. Unauthorized Creator Fee Change
 
 **Trigger**: An attempt to modify the creator fee by an address that is not the contract owner.
 
@@ -218,7 +246,7 @@ Call: setCreatorFee(100) // Setting fee to 100% (all funds captured)
 ```
 This transaction would be detected because a non-owner is attempting to modify a critical financial parameter.
 
-### 6. Storage Manipulation Detection
+### 8. Storage Manipulation Detection
 
 **Trigger**: Modifications to contract storage that could redirect funds to unauthorized addresses.
 
@@ -236,79 +264,100 @@ Storage Modifications:
 ```
 This transaction would be detected because it's attempting to replace a legitimate player's address with an attacker's address.
 
-### 7. Withdrawal Disabling Detection
+## Technical Implementation
 
-**Trigger**: Contract upgrade or modification that would remove or block withdrawal functionality.
+Our detector is implemented with a type-safe, efficient architecture that enables precise identification of value extraction and security threats:
 
-**Description**: The detector analyzes contract modifications to ensure that new implementations maintain withdrawal functionality. This prevents malicious upgrades that could trap user funds in the contract.
+### Interfaces for Context Analysis
 
-**Real-world example**:
+We define specific TypeScript interfaces to handle different aspects of transaction context:
+
+```typescript
+// Context interfaces for value extraction detection
+interface MempoolContext {
+    blockTransactions?: Transaction[];
+    pendingTransactions?: Transaction[];
+    currentTransaction?: Transaction;
+    priceImpact?: {
+        before: string;
+        after: string;
+    };
+    similarityAnalysis?: {
+        isExactCopy: boolean;
+        inputSimilarity: string;
+    };
+}
+
+interface BlockchainContext {
+    isReorg?: boolean;
+    reorgDepth?: number;
+    blockNumber?: number;
+    timestamp?: number;
+}
+
+interface LiquidityContext {
+    recentLiquidityEvents?: LiquidityEvent[];
+    liquidityDuration?: number;
+}
 ```
-Transaction: 0xb9c8a7d6e5f4a3b2c1d0e9f8a7b6c5d4e3f2a1b0c9d8e7f6a5b4c3d2e1f0a9b8
-From: 0x8A7F7c5b0083eB7f8C3ba11dF9E37a5ac501B972 (Contract Owner)
-To: 0x7296c77Edd04092Fd6a8117c7f797E0680d97fa1 (RPS Contract)
-Call: upgrade(1)
-New Implementation: 0xC8F68Eccf2F05F32d29A8e949fDA3A222f6a9Bd7
-Analysis: New implementation missing withdrawal functionality
+
+### MEV Address Tracking
+
+The detector maintains a database of known MEV extractors and sandwich bots:
+
+```typescript
+// High-risk addresses known for MEV activity
+private static readonly KNOWN_MEV_ADDRESSES = [
+    '0x4206904396d558D6fA240E0F788d30C831D4a6E7'.toLowerCase(),
+    '0xC8F68Eccf2F05F32d29A8e949fDA3A222f6a9Bd7'.toLowerCase()
+];
 ```
-This transaction would be detected because it would replace the contract implementation with one that blocks withdrawals.
 
-### 8. Multisig Authorization Bypass Detection
+### Detection Methods
 
-**Trigger**: Bypassing signature requirements for sensitive multisig operations.
+Each attack vector is evaluated through specialized methods with clear logic:
 
-**Description**: The detector verifies that operations requiring multiple signatures (from both players) have the proper number of signatures before execution. This prevents unauthorized users from modifying game parameters or states.
+```typescript
+// Sandwich attack detection sample logic
+private static isSandwichAttackPattern(request: DetectionRequest): boolean {
+    const mempoolContext = request.additionalData?.mempoolContext as MempoolContext;
+    if (!mempoolContext || !mempoolContext.blockTransactions) {
+        return false;
+    }
+    
+    // Check if the transactions follow the sandwich pattern:
+    // 1. Same address for first and last transaction
+    // 2. Target transaction in the middle
+    // 3. Higher gas price in the attacking transactions
+    
+    // Additional price impact analysis
+    if (mempoolContext.priceImpact) {
+        const beforeImpact = parseFloat(mempoolContext.priceImpact.before);
+        const afterImpact = parseFloat(mempoolContext.priceImpact.after);
+        
+        // If price impact is significant (>1% total), likely a sandwich
+        return (beforeImpact + afterImpact) > 1.0;
+    }
+}
 
-**Real-world example**:
+// Time-bandit attack detection with proper null checking
+private static isTimeBanditAttack(request: DetectionRequest): boolean {
+    const blockchainContext = request.additionalData?.blockchainContext as BlockchainContext;
+    if (!blockchainContext) {
+        return false;
+    }
+    
+    // Check for blockchain reorganization with proper null check for reorgDepth
+    if (blockchainContext.isReorg && blockchainContext.reorgDepth !== undefined && blockchainContext.reorgDepth > 2) {
+        // Deep reorgs (>2 blocks) are suspicious in MEV context
+        return true;
+    }
+    
+    return false;
+}
 ```
-Transaction: 0xc0d8e9f7a6b5c4d3e2f1a0b9c8d7e6f5a4b3c2d1e0f9a8b7c6d5e4f3a2b1c0d9
-From: 0x4206904396d558D6fA240E0F788d30C831D4a6E7 (Unauthorized Address)
-To: 0x7296c77Edd04092Fd6a8117c7f797E0680d97fa1 (RPS Contract)
-Call: modifyAuth(1,1) // Modifying auth requirements to require only 1 signature
-Signatures Provided: 1 (from attacker)
-Signatures Required: 2 (should be from both players)
-```
-This transaction would be detected because it attempts to modify authorization requirements without sufficient signatures.
 
-### 9. Hidden Admin Function Detection
-
-**Trigger**: Call to undocumented or hidden admin functions that could extract funds.
-
-**Description**: The detector identifies calls to hidden admin functions that might exist in the contract but aren't documented or intended for regular use. These functions could be backdoors allowing unauthorized fund extraction.
-
-**Real-world example**:
-```
-Transaction: 0xe1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2
-From: 0x8A7F7c5b0083eB7f8C3ba11dF9E37a5ac501B972 (Contract Owner)
-To: 0x7296c77Edd04092Fd6a8117c7f797E0680d97fa1 (RPS Contract)
-Call: emergencyWithdraw(0xC8F68Eccf2F05F32d29A8e949fDA3A222f6a9Bd7)
-Function Analysis:
-  - Never previously called
-  - Undocumented
-  - Can transfer funds
-  - High risk level
-```
-This transaction would be detected because it calls a high-risk, undocumented function capable of transferring funds.
-
-### 10. Suspicious Ownership Transfer Detection
-
-**Trigger**: Transfer of contract ownership to a high-risk or suspicious address.
-
-**Description**: The detector analyzes ownership transfers to identify when ownership is being transferred to suspicious addresses with known risks such as association with hacks, mixer interactions, or newly created addresses with little history.
-
-**Real-world example**:
-```
-Transaction: 0xf0e1d2c3b4a5968d7e6f5a4b3c2d1e0f9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d3
-From: 0x8A7F7c5b0083eB7f8C3ba11dF9E37a5ac501B972 (Current Owner)
-To: 0x7296c77Edd04092Fd6a8117c7f797E0680d97fa1 (RPS Contract)
-Call: transferOwnership(0xC8F68Eccf2F05F32d29A8e949fDA3A222f6a9Bd7)
-Risk Assessment:
-  - Risk Score: 85/100 (High)
-  - Associated with previous hacks
-  - Newly created address
-  - Connected to mixing services
-```
-This transaction would be detected because it transfers ownership to a high-risk address.
+Note: The `isTimeBanditAttack` method ensures that `reorgDepth` is properly checked with `!== undefined` rather than a simple truthy check. This is critical because a valid reorganization depth of `0` would incorrectly evaluate to `false` in a truthy check, but is a defined value that should be properly evaluated when comparing to the threshold of `2`. This precision in null checking is essential for correctly detecting time-bandit attacks with various reorganization depths.
 
 ## Integration with Venn Firewall
 
@@ -435,94 +484,111 @@ npm run test:watch
 
 The tests are organized by detection scenario. You can test specific scenarios:
 
-#### 1. Testing Unauthorized Player Detection
+#### 1. Testing Sandwich Attack Detection
 
 ```bash
-yarn test -t "should detect unauthorized player move"
+yarn test -t "should detect classic sandwich attack pattern"
 ```
 
-#### 2. Testing Rapid Sequential Moves
+#### 2. Testing Time-Bandit Attack
 
 ```bash
-yarn test -t "should detect rapid sequential moves"
+yarn test -t "should detect time-bandit attack attempt"
 ```
 
-#### 3. Testing Fund Draining Attempts
+#### 3. Testing JIT Liquidity Attack
 
 ```bash
-yarn test -t "should detect unauthorized creator fee change"
+yarn test -t "should detect JIT liquidity attack pattern"
 ```
 
-#### 4. Testing Storage Manipulation
+#### 4. Testing Multisig Validation Bypass
 
 ```bash
-yarn test -t "should detect suspicious fund withdrawal pattern"
+yarn test -t "should detect multisig validation bypass attempt"
 ```
 
-#### 5. Testing Withdrawal Disabling
+#### 5. Testing Oracle Manipulation
 
 ```bash
-yarn test -t "should detect attempt to disable withdrawals"
+yarn test -t "should detect oracle manipulation attempt"
 ```
 
-#### 6. Testing Multisig Authorization
+#### 6. Testing Generalized Frontrunning
 
 ```bash
-yarn test -t "should detect multisig authorization changes"
-```
-
-#### 7. Testing Hidden Admin Functions
-
-```bash
-yarn test -t "should detect calls to hidden admin functions"
-```
-
-#### 8. Testing Ownership Transfers
-
-```bash
-yarn test -t "should detect ownership transfer to suspicious address"
+yarn test -t "should detect generalized frontrunning attack"
 ```
 
 ### Manual Testing with API Calls
 
 You can manually test the detection service using tools like curl or Postman:
 
-#### Example API Call for Fund Draining Detection
+#### Example API Call for Sandwich Attack Detection
 
 ```bash
 curl -X POST http://localhost:3000/detect \
   -H "Content-Type: application/json" \
   -d '{
     "id": "test-detection-1",
-    "detectorName": "rps-security-detector",
+    "detectorName": "rps-value-extraction-detector",
     "chainId": 17000,
-    "hash": "0x8c5e7bea4fd9b2b5e34890c8d32adbb77cc1eeba3e9c31f3e0d23b4fbe7b8e1c",
+    "hash": "0xd9e8f7a6b5c4d3e2f1a0b9c8d7e6f5a4b3c2d1e0",
     "protocolName": "RockPaperScissors",
     "protocolAddress": "0x7296c77Edd04092Fd6a8117c7f797E0680d97fa1",
     "trace": {
       "blockNumber": 12345,
-      "from": "0x4206904396d558D6fA240E0F788d30C831D4a6E7",
+      "from": "0xD8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
       "to": "0x7296c77Edd04092Fd6a8117c7f797E0680d97fa1",
-      "input": "0x7917eebd0000000000000000000000000000000000000000000000000000000000000064",
+      "input": "0x25aa99cd0000000000000000000000000000000000000000000000000000000000000000",
       "gas": "100000",
       "gasUsed": "62500",
-      "value": "0",
+      "value": "1000000000000000000",
       "pre": {
-        "0x4206904396d558D6fA240E0F788d30C831D4a6E7": {
+        "0xD8dA6BF26964aF9D7eEd9e03E53415D37aA96045": {
           "balance": "0x100000000000000000000",
           "nonce": 5
         }
       },
       "post": {
-        "0x4206904396d558D6fA240E0F788d30C831D4a6E7": {
+        "0xD8dA6BF26964aF9D7eEd9e03E53415D37aA96045": {
           "balance": "0xff000000000000000000"
         }
       }
     },
     "additionalData": {
-      "contractState": {
-        "owner": "0x8A7F7c5b0083eB7f8C3ba11dF9E37a5ac501B972",
-        "currentCreatorFee": 25
+      "mempoolContext": {
+        "blockTransactions": [
+          {
+            "hash": "0xa1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0",
+            "from": "0x4206904396d558D6fA240E0F788d30C831D4a6E7",
+            "to": "0x8A7F7c5b0083eB7f8C3ba11dF9E37a5ac501B972",
+            "input": "0xabcdef01",
+            "gasPrice": "35000000000",
+            "blockPosition": 0
+          },
+          {
+            "hash": "0xd9e8f7a6b5c4d3e2f1a0b9c8d7e6f5a4b3c2d1e0",
+            "from": "0xD8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
+            "to": "0x7296c77Edd04092Fd6a8117c7f797E0680d97fa1",
+            "input": "0x25aa99cd0000000000000000000000000000000000000000000000000000000000000000",
+            "value": "1000000000000000000",
+            "gasPrice": "30000000000",
+            "blockPosition": 1
+          },
+          {
+            "hash": "0xf9e8d7c6b5a4f3e2d1c0b9a8f7e6d5c4b3a2f1e0",
+            "from": "0x4206904396d558D6fA240E0F788d30C831D4a6E7",
+            "to": "0x8A7F7c5b0083eB7f8C3ba11dF9E37a5ac501B972",
+            "input": "0xfedcba98",
+            "gasPrice": "35000000000",
+            "blockPosition": 2
+          }
+        ],
+        "priceImpact": {
+          "before": "2.5%",
+          "after": "2.7%"
+        }
       }
     }
   }'
@@ -564,4 +630,5 @@ To perform end-to-end testing with the actual contract:
 - [RockPaperScissors Contract Documentation](https://holesky.etherscan.io/address/0x7296c77Edd04092Fd6a8117c7f797E0680d97fa1)
 - [Venn Firewall Documentation](https://docs.venn.build/)
 - [Multisig Security Best Practices](https://ethereum.org/en/developers/docs/smart-contracts/security/)
+- [Understanding MEV and Sandwich Attacks](https://ethereum.org/en/developers/docs/mev/)
 

@@ -255,8 +255,8 @@ export class DetectionService {
             return false;
         }
         
-        // Check for blockchain reorganization
-        if (blockchainContext.isReorg && blockchainContext.reorgDepth && blockchainContext.reorgDepth > 2) {
+        // Check for blockchain reorganization with proper null check for reorgDepth
+        if (blockchainContext.isReorg && blockchainContext.reorgDepth !== undefined && blockchainContext.reorgDepth > 2) {
             // Deep reorgs (>2 blocks) are suspicious in MEV context
             return true;
         }
