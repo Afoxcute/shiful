@@ -1,4 +1,6 @@
 export const contractAddress = '0x7296c77Edd04092Fd6a8117c7f797E0680d97fa1';
+export const networkName = 'Venn Holesky';
+
 
 export const abi = 
   [

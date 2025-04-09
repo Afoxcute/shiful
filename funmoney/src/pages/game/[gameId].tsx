@@ -28,9 +28,9 @@ import {
   useWaitForTransactionReceipt,
   useWatchContractEvent,
   useWriteContract,
+  useChainId,
 } from 'wagmi';
-import { useContractInfo } from '../../hooks/useContractInfo';
-import { useNetworkInfo } from '../../hooks/useNetworkInfo';
+import { getContractInfo } from '../../constants';
 import { extractErrorMessages } from '../../utils';
 import toast from 'react-hot-toast';
 import Link from 'next/link';
@@ -39,62 +39,31 @@ import { ErrorBoundary } from 'react-error-boundary';
 
 
 const GameInterface = () => {
-  const [refreshData, setRefreshData] = useState('');
-  const { abi, contractAddress } = useContractInfo();
-  const { tokenSymbol } = useNetworkInfo();
-
   const router = useRouter();
+  const { gameId } = router.query;
+  const chainId = useChainId();
+  const { abi, contractAddress, networkName } = getContractInfo(chainId);
   const account = useAccount();
+  
+  const proofedGamedId = gameId ? gameId.toString() : '0';
+  const [moveLoading, setMoveLoading] = useState(false);
+  const [currentMove, setCurrentMove] = useState<MoveType | null>(null);
+  const [refreshToken, setRefreshToken] = useState('');
+  
+  const gamesIdResult = useReadContract({
+    abi,
+    address: contractAddress as `0x${string}`,
+    functionName: 'getGameById',
+    args: [BigInt(Number(proofedGamedId))],
+    scopeKey: refreshToken,
+  });
+
   const { data: hash, error, isPending, writeContract } = useWriteContract();
 
   const { isLoading: isConfirming, isSuccess: isConfirmed } =
     useWaitForTransactionReceipt({
       hash,
     });
-
-  const { gameId } = router.query;
-  const proofedGamedId = Number(gameId) || 0;
-
-  const gamesIdResult = useReadContract({
-    abi,
-    address: contractAddress,
-    functionName: 'getGameById',
-    args: [BigInt(Number(proofedGamedId))],
-    scopeKey: refreshData,
-  });
-
-            useWatchContractEvent({
-              address: contractAddress,
-              abi,
-              eventName: 'PlayerMoved',
-              onLogs(logs: any) {
-                if(logs){
-                  setRefreshData(Date.now().toString())
-                               const player = logs[0]?.args?.player;
-                               if (player === account.address) {
-                                 toast.success(`Move successfully made!`, {
-                                   duration: 3000,
-                                 });
-                               } else {
-                                 toast.success(`Opponent made move`, {
-                                   duration: 30000,
-                                 });
-                               }
-                }
-              },
-            });
-
-
-            useWatchContractEvent({
-              address: contractAddress,
-              abi,
-              eventName: 'GameJoined',
-              onLogs(logs: any) {
-                if (logs) {
-                  setRefreshData(Date.now().toString());
-                }
-              },
-            });
 
   const pending = isPending || isConfirming;
 
@@ -105,13 +74,45 @@ const GameInterface = () => {
   const userAddress = account.address;
   const gameEnded = !gameDetails?.isActive && gameDetails?.roundsPlayed > 0;
 
+  useWatchContractEvent({
+    address: contractAddress as `0x${string}`,
+    abi,
+    eventName: 'PlayerMoved',
+    onLogs(logs: any) {
+      if(logs){
+        setRefreshToken(Date.now().toString());
+        const player = logs[0]?.args?.player;
+        if (player === account.address) {
+          toast.success(`Move successfully made!`, {
+            duration: 3000,
+          });
+        } else {
+          toast.success(`Opponent made move`, {
+            duration: 30000,
+          });
+        }
+      }
+    },
+  });
+
+  useWatchContractEvent({
+    address: contractAddress as `0x${string}`,
+    abi,
+    eventName: 'GameJoined',
+    onLogs(logs: any) {
+      if (logs) {
+        setRefreshToken(Date.now().toString());
+      }
+    },
+  });
+
   const handleMakeMove = async () => {
     try {
       await writeContract({
-        address: contractAddress,
+        address: contractAddress as `0x${string}`,
         abi,
         functionName: 'makeMove',
-        args: [BigInt(proofedGamedId), playerMove],
+        args: [BigInt(Number(proofedGamedId)), playerMove],
       });
     } catch (error) {
       console.log(error);
@@ -120,7 +121,7 @@ const GameInterface = () => {
 
   React.useEffect(() => {
     if (isConfirmed) {
-      setRefreshData(Date.now().toString());
+      setRefreshToken(Date.now().toString());
     }
   }, [isConfirmed]);
 
@@ -231,21 +232,21 @@ const GameInterface = () => {
     switch (Number(type)) {
       case 0:
         return {
-          name: 'LIGHTNING DUEL',
+          name: 'Quick Match',
           rounds: 1,
           icon: <Gamepad2 className='h-6 w-6 text-emerald-500' />,
           bgColor: 'bg-emerald-500/10',
         };
       case 1:
         return {
-          name: 'WARRIOR CLASH',
-          rounds: 2,
+          name: 'Best of Three',
+          rounds: 3,
           icon: <Swords className='h-6 w-6 text-blue-500' />,
           bgColor: 'bg-blue-500/10',
         };
       case 2:
         return {
-          name: 'EPIC TOURNAMENT',
+          name: 'Championship',
           rounds: 5,
           icon: <Crown className='h-6 w-6 text-yellow-500' />,
           bgColor: 'bg-yellow-500/10',
@@ -477,8 +478,14 @@ const GameInterface = () => {
     </ErrorBoundary>
   );
 
+  // Main game view
   return (
     <ErrorBoundary fallback={<div>Something went wrong</div>}>
+      {/* Network Info */}
+      <div className='text-sm bg-gray-800 p-3 rounded-lg border border-gray-700 flex items-center justify-between mb-4'>
+        <span>Active Network: <span className='text-blue-400'>{networkName}</span></span>
+      </div>
+      
       <div className='flex flex-col items-center justify-center min-h-screen bg-slate-900 text-white p-4'>
         <div className='w-full max-w-xl bg-slate-800/50 backdrop-blur-sm rounded-2xl shadow-xl p-6'>
           {/* Header */}
@@ -504,7 +511,7 @@ const GameInterface = () => {
                   }
                 />
                 <span className='text-sm'>
-                  Round {gameEnded ? Math.min(gameDetails?.roundsPlayed, gameType.rounds) : gameDetails?.roundsPlayed + 1}/{gameType.rounds}
+                  Round {gameDetails?.roundsPlayed + 1}/{gameType.rounds}
                 </span>
               </div>
             </div>
@@ -574,7 +581,7 @@ const GameInterface = () => {
                 <span>Stake</span>
               </div>
               <span className='font-bold text-yellow-500'>
-                {formatEther(gameDetails?.stake)} {tokenSymbol}
+                {formatEther(gameDetails?.stake)} ETH
               </span>
             </div>
             {gameDetails?.players.map((player, index) => (

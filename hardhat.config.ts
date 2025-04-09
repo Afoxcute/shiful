@@ -19,14 +19,7 @@ module.exports = {
     }
   },
   networks: {
-    shiful: {
-      url: "https://core-testnet.drpc.org",
-      accounts: [process.env.YOUR_PRIVATE_KEY],
-      // chainId: 5000
-      gasPrice: 1000000000, // 1 gwei
-      gas: 2100000,
-      timeout: 60000
-    },
+
     vennHolesky: {
       url: vennURL,
       accounts: [process.env.YOUR_PRIVATE_KEY],

@@ -3,9 +3,8 @@
 import React, { useState } from 'react';
 import { Trophy, Coins, Swords, Timer, Info } from 'lucide-react';
 import { parseEther } from 'viem';
-import { useWriteContract, useWaitForTransactionReceipt, useWatchContractEvent } from 'wagmi';
-import { useContractInfo } from '../hooks/useContractInfo';
-import { useNetworkInfo } from '../hooks/useNetworkInfo';
+import { useWriteContract, useWaitForTransactionReceipt, useWatchContractEvent, useChainId } from 'wagmi';
+import { getContractInfo } from '../constants';
 import toast from 'react-hot-toast';
 import { extractErrorMessages } from '../utils';
 import { ErrorBoundary } from 'react-error-boundary';
@@ -14,34 +13,35 @@ import { ErrorBoundary } from 'react-error-boundary';
 const GAME_TYPES = [
   {
     id: 0,
-    name: 'LIGHTNING DUEL',
+    name: 'Quick Match',
     description: 'Single round, winner takes all',
     icon: Timer,
     matches: 'One Round',
   },
   {
     id: 1,
-    name: 'WARRIOR CLASH',
+    name: 'Best of Three',
     description: 'First to win 2 rounds',
     icon: Swords,
-    matches: '2 Rounds',
+    matches: '3 Rounds',
   },
   {
     id: 2,
-    name: 'EPIC TOURNAMENT',
-    description: 'First to win 5 rounds',
+    name: 'Championship',
+    description: 'First to win 3 rounds',
     icon: Trophy,
     matches: '5 Rounds',
   },
 ];
 
 export default function CreateGame() {
-    const { abi, contractAddress } = useContractInfo();
-    const { tokenSymbol } = useNetworkInfo();
+    const chainId = useChainId();
+    const { abi, contractAddress, networkName } = getContractInfo(chainId);
+    
     const { data: hash, error, isPending, writeContract } = useWriteContract();
 
           useWatchContractEvent({
-            address: contractAddress,
+            address: contractAddress as `0x${string}`,
             abi,
             eventName: 'GameCreated',
             onLogs(logs: any) {
@@ -65,29 +65,31 @@ export default function CreateGame() {
   const handleCreateGame = async () => {
     if (!stakeAmount) return;
 
-    const toastId = toast.loading('Preparing your battle arena...', {
+    const toastId = toast.loading('Preparing to create game...', {
       icon: '⚔️',
       duration: 3000,
     });
 
     try {
       await writeContract({
-        address: contractAddress,
+        address: contractAddress as `0x${string}`,
         abi,
         functionName: 'createGame',
         args: [BigInt(selectedType)],
         value: parseEther(stakeAmount),
       });
 
+  
+
       // Update loading toast when transaction is sent
-      toast.loading('Summoning your battle on the blockchain...', {
+      toast.loading('Waiting for transaction confirmation...', {
         id: toastId,
         icon: '⏳',
         duration: 3000,
       });
     } catch (err) {
       toast.error(
-        err instanceof Error ? err.message : 'Battle creation failed',
+        err instanceof Error ? err.message : 'Failed to create game',
         {
           id: toastId,
           duration: 3000,
@@ -123,11 +125,15 @@ export default function CreateGame() {
   return (
     <ErrorBoundary fallback={<div>Something went wrong</div>}>
       <div className='space-y-6 text-white'>
+        {/* Network Info */}
+        <div className='text-sm bg-gray-800 p-3 rounded-lg border border-gray-700 flex items-center justify-between'>
+          <span>Active Network: <span className='text-blue-400'>{networkName}</span></span>
+        </div>
+        
         {/* Game Type Selection */}
         <div className='space-y-4'>
-          <h2 className='text-xl font-semibold text-gray-200 flex items-center'>
-            <Swords className="w-5 h-5 mr-2 text-blue-400" />
-            SELECT YOUR BATTLE MODE
+          <h2 className='text-xl font-semibold text-gray-200'>
+            Select Game Type
           </h2>
           <div className='grid gap-4'>
             {GAME_TYPES.map((type) => {
@@ -139,8 +145,8 @@ export default function CreateGame() {
                   onClick={() => setSelectedType(type.id)}
                   className={`flex items-center p-4 rounded-lg border-2 transition-all duration-200 ${
                     isSelected
-                      ? 'border-blue-500 bg-blue-500/10 transform scale-105 shadow-lg shadow-blue-500/20'
-                      : 'border-gray-700 bg-gray-800 hover:border-gray-600 hover:transform hover:scale-102'
+                      ? 'border-blue-500 bg-blue-500/10'
+                      : 'border-gray-700 bg-gray-800 hover:border-gray-600'
                   }`}
                 >
                   <div
@@ -150,7 +156,7 @@ export default function CreateGame() {
                   >
                     <Icon
                       className={`w-6 h-6 ${
-                        isSelected ? 'text-blue-400 animate-pulse' : 'text-gray-400'
+                        isSelected ? 'text-blue-400' : 'text-gray-400'
                       }`}
                     />
                   </div>
@@ -169,13 +175,12 @@ export default function CreateGame() {
 
         {/* Stake Amount Input */}
         <div className='space-y-4'>
-          <h2 className='text-xl font-semibold text-gray-200 flex items-center'>
-            <Coins className="w-5 h-5 mr-2 text-yellow-400" />
-            SET YOUR BATTLE STAKE
+          <h2 className='text-xl font-semibold text-gray-200'>
+            Set Stake Amount
           </h2>
           <div className='relative'>
             <div className='absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none'>
-              <Coins className='h-5 w-5 text-yellow-400' />
+              <Coins className='h-5 w-5 text-gray-400' />
             </div>
             <input
               type='number'
@@ -183,16 +188,16 @@ export default function CreateGame() {
               min='0'
               value={stakeAmount}
               onChange={(e) => setStakeAmount(e.target.value)}
-              placeholder={`Enter ${tokenSymbol} amount`}
-              className='w-full pl-10 pr-16 py-3 bg-gray-800 border-2 border-gray-700 rounded-lg focus:outline-none focus:border-blue-500 transition-colors text-white'
+              placeholder='Enter ETH amount'
+              className='w-full pl-10 pr-12 py-3 bg-gray-800 border-2 border-gray-700 rounded-lg focus:outline-none focus:border-blue-500 transition-colors text-white'
             />
             <div className='absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none'>
-              <span className='text-yellow-400'>{tokenSymbol}</span>
+              <span className='text-gray-400'>ETH</span>
             </div>
           </div>
           <p className='flex items-center text-sm text-gray-400'>
             <Info className='w-4 h-4 mr-1' />
-            Stake must be greater than 0 {tokenSymbol}
+            Stake must be greater than 0 ETH
           </p>
         </div>
 
@@ -204,7 +209,7 @@ export default function CreateGame() {
           ${
             !stakeAmount
               ? 'bg-gray-700 text-gray-400 cursor-not-allowed'
-              : 'bg-gradient-to-r from-blue-500 to-purple-500 text-white hover:opacity-90 hover:shadow-lg hover:shadow-blue-500/20 transform hover:-translate-y-1 transition-all duration-300'
+              : 'bg-gradient-to-r from-blue-500 to-purple-500 text-white hover:opacity-90'
           }
         `}
         >
@@ -213,7 +218,7 @@ export default function CreateGame() {
           ) : (
             <>
               <Swords className='w-5 h-5' />
-              <span>FORGE YOUR BATTLE</span>
+              <span>Create Game</span>
             </>
           )}
         </button>

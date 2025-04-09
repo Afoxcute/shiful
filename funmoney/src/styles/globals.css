@@ -2,10 +2,6 @@
 @tailwind components;
 @tailwind utilities;
 
-.text-gradient {
-  @apply bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-500;
-}
-
 html,
 body {
   padding: 0;

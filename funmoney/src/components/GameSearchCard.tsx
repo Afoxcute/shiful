@@ -13,7 +13,6 @@ import {
 import { formatEther } from 'viem';
 import Link from 'next/link';
 import { GameSearchCardProps } from '../types';
-import { useNetworkInfo } from '../hooks/useNetworkInfo';
 
 const GameSearchCard: React.FC<GameSearchCardProps> = ({
   game,
@@ -21,25 +20,23 @@ const GameSearchCard: React.FC<GameSearchCardProps> = ({
   isLoading,
   userAddress,
 }) => {
-  const { tokenSymbol } = useNetworkInfo();
-
   const getGameTypeInfo = (type: number) => {
     switch (Number(type)) {
       case 0:
         return {
-          name: 'LIGHTNING DUEL',
+          name: 'Quick Match',
           rounds: 1,
           icon: <Gamepad2 className='h-5 w-5 text-emerald-500' />,
         };
       case 1:
         return {
-          name: 'WARRIOR CLASH',
-          rounds: 2,
+          name: 'Best of Three',
+          rounds: 3,
           icon: <Swords className='h-5 w-5 text-blue-500' />,
         };
       case 2:
         return {
-          name: 'EPIC TOURNAMENT',
+          name: 'Championship',
           rounds: 5,
           icon: <Trophy className='h-5 w-5 text-yellow-500' />,
         };
@@ -81,22 +78,22 @@ const GameSearchCard: React.FC<GameSearchCardProps> = ({
   };
 
   return (
-    <div className='w-full rounded-lg border-2 border-gray-700 bg-gray-800/80 p-6 backdrop-blur-sm hover:border-blue-500 transition-all duration-300 hover:shadow-lg hover:shadow-blue-500/20 transform hover:-translate-y-1'>
+    <div className='w-full rounded-lg border-2 border-gray-700 bg-gray-800/80 p-6 backdrop-blur-sm hover:border-gray-600 transition-all duration-200'>
       {/* Header Section */}
       <div className='mb-6 flex items-start justify-between'>
         <div className='flex items-start space-x-4'>
-          <div className='flex h-12 w-12 items-center justify-center rounded-lg bg-gray-700/50 animate-pulse'>
+          <div className='flex h-12 w-12 items-center justify-center rounded-lg bg-gray-700/50'>
             {gameTypeInfo.icon}
           </div>
           <div>
             <div className='flex items-center gap-2'>
               <h3 className='text-lg font-semibold text-white'>
-                Battle #{game?.gameId.toString()}
+                Game #{game?.gameId.toString()}
               </h3>
               <button
                 onClick={copyGameId}
                 className='rounded-md p-1 text-gray-400 hover:bg-gray-700 hover:text-gray-300 transition-colors'
-                title='Copy Battle ID'
+                title='Copy Game ID'
               >
                 <Copy className='h-4 w-4' />
               </button>
@@ -110,11 +107,11 @@ const GameSearchCard: React.FC<GameSearchCardProps> = ({
               >
                 {game?.isActive ? (
                   <>
-                    <CheckCircle2 className='h-3 w-3' /> LIVE
+                    <CheckCircle2 className='h-3 w-3' /> Active
                   </>
                 ) : (
                   <>
-                    <Clock className='h-3 w-3' /> ENDED
+                    <Clock className='h-3 w-3' /> Inactive
                   </>
                 )}
               </span>
@@ -122,7 +119,7 @@ const GameSearchCard: React.FC<GameSearchCardProps> = ({
             <div className='mt-1 flex items-center gap-3'>
               <div className='flex items-center gap-1.5 text-gray-400'>
                 <CircleDollarSign className='h-4 w-4 text-yellow-500' />
-                <span>{formattedStake} {tokenSymbol}</span>
+                <span>{formattedStake} ETH</span>
               </div>
               <div className='flex items-center gap-1.5 text-gray-400'>
                 {hasSecondPlayer ? (
@@ -130,7 +127,7 @@ const GameSearchCard: React.FC<GameSearchCardProps> = ({
                 ) : (
                   <User className='h-4 w-4 text-blue-500' />
                 )}
-                <span>{hasSecondPlayer ? '2 WARRIORS' : '1 WARRIOR'}</span>
+                <span>{hasSecondPlayer ? '2 Players' : '1 Player'}</span>
               </div>
             </div>
           </div>
@@ -150,26 +147,37 @@ const GameSearchCard: React.FC<GameSearchCardProps> = ({
           <button
             onClick={() => onJoinGame(game?.gameId, game?.stake)}
             disabled={isLoading || hasSecondPlayer}
-            className={`w-full rounded-lg px-4 py-3 font-medium transition-all duration-300 
+            className={`w-full rounded-lg px-4 py-3 font-medium transition-all duration-200 
             ${
               hasSecondPlayer
                 ? 'bg-gray-700 text-gray-400 cursor-not-allowed'
-                : 'bg-gradient-to-r from-blue-600 to-purple-600 text-white hover:from-blue-500 hover:to-purple-500 hover:shadow-lg hover:shadow-blue-500/20 transform hover:-translate-y-1'
+                : 'bg-gradient-to-r from-blue-600 to-purple-600 text-white hover:from-blue-500 hover:to-purple-500'
             }
           `}
           >
             <span className='flex items-center justify-center gap-2'>
+              {/* {hasSecondPlayer ? (
+                <>
+                  <Users className='h-5 w-5' />
+                  Game Full
+                </>
+              ) : (
+                <>
+                  <User className='h-5 w-5' />
+                  Join Game
+                </>
+              )} */}
               {hasSecondPlayer ? (
                 <>
                   <Users className='h-5 w-5' />
-                  ARENA FULL
+                  Game Full
                 </>
               ) : isLoading ? (
                 <div className='w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin' />
               ) : (
                 <>
-                  <Swords className='h-5 w-5' />
-                  JOIN BATTLE
+                  <User className='h-5 w-5' />
+                  Join Game
                 </>
               )}
             </span>
@@ -178,9 +186,8 @@ const GameSearchCard: React.FC<GameSearchCardProps> = ({
 
         {playerCompleteAndIsUserPlayer && (
           <Link href={`/game/${game?.gameId}`} passHref>
-            <button className='flex items-center justify-center p-4 bg-gradient-to-r from-blue-600 to-purple-600 text-white rounded-lg hover:from-blue-500 hover:to-purple-500 transition-all duration-300 w-full mt-5 hover:shadow-lg hover:shadow-blue-500/20 transform hover:-translate-y-1'>
-              <Swords className='h-5 w-5 mr-2' />
-              ENTER BATTLE ARENA
+            <button className='flex items-center justify-center p-4 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition-colors w-full mt-5'>
+              Enter Game
             </button>
           </Link>
         )}

@@ -1,5 +1,5 @@
 // import { useWatchContractEvent } from "wagmi";
-// import { contractAddress, contractAbi } from "../constants/contractinfomainnet";
+// import { contractAddress, contractAbi } from "../constants/contractInfo";
 
 // export function useRockPaperScissors(
 //   onGameCreated,

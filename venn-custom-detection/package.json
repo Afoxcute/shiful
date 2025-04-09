@@ -3,7 +3,7 @@
     "version": "1.0.0",
     "description": "Custom detector boilerplate",
     "scripts": {
-        "dev": "nodemon",
+        "dev": "NODE_ENV=development nodemon",
         "build": "rm -rf dist && NODE_ENV=production tsc && tsc-alias dist --outDir ./dist",
         "preview": "NODE_ENV=development node dist/src/app.js",
         "start": "NODE_ENV=production node dist/src/app.js",

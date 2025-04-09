@@ -8,12 +8,10 @@ import {
   Timer,
   RefreshCcw,
   ExternalLink,
-  Swords,
 } from 'lucide-react';
 import { formatEther, parseEther } from 'viem';
-import { useAccount, useReadContract, useWaitForTransactionReceipt, useWriteContract } from 'wagmi';
-import { useContractInfo } from '../hooks/useContractInfo';
-import { useNetworkInfo } from '../hooks/useNetworkInfo';
+import { useAccount, useReadContract, useWaitForTransactionReceipt, useWriteContract, useChainId } from 'wagmi';
+import { getContractInfo } from '../constants';
 import GameSearchCard from './GameSearchCard';
 import toast from 'react-hot-toast';
 import { extractErrorMessages } from '../utils';
@@ -22,8 +20,9 @@ import { ErrorBoundary } from 'react-error-boundary';
 
 
 export default function JoinGame() {
-      const { abi, contractAddress } = useContractInfo();
-      const { tokenSymbol } = useNetworkInfo();
+      const chainId = useChainId();
+      const { abi, contractAddress, networkName } = getContractInfo(chainId);
+      
       const {
         data: hash,
         error,
@@ -47,7 +46,7 @@ export default function JoinGame() {
 
       const gameResult = useReadContract({
         abi,
-        address: contractAddress,
+        address: contractAddress as `0x${string}`,
         functionName: 'getGameById',
         args: [BigInt(proofedSearchQuery)],
         scopeKey: refreshToken
@@ -72,23 +71,23 @@ export default function JoinGame() {
   };
 
   const handleJoinGame = async(id: bigint | undefined,stake:bigint | undefined)=>{
-    const toastId = toast.loading('Preparing to enter the battle arena...',)
+    const toastId = toast.loading('Preparing to join game...',)
 try {
   await writeContract({
-    address: contractAddress,
+    address: contractAddress as `0x${string}`,
     abi,
     functionName: 'joinGame',
     args: [id],
     value: (stake),
   });
-        toast.loading('Summoning your warrior to the battlefield...', {
+        toast.loading('Waiting for transaction confirmation...', {
           id: toastId,
-          icon: '⚔️',
+          icon: '⏳',
           duration: 3000,
         });
 } catch (err) {
         toast.error(
-          err instanceof Error ? err.message : 'Failed to join battle',
+          err instanceof Error ? err.message : 'Failed to create game',
           {
             id: toastId,
             duration: 3000,
@@ -102,9 +101,9 @@ try {
 
 useEffect(() => {
       if (isConfirmed) {
-        toast.success('You have entered the battle arena! 🎮', {
+        toast.success('Game joined successfully! 🎮', {
           duration: 3000,
-          icon: '🔥',
+          icon: '🎉',
         });
         // Reset form
       }
@@ -124,13 +123,18 @@ useEffect(() => {
   return (
     <ErrorBoundary fallback={<div>Something went wrong</div>}>
       <div className='space-y-6 text-white'>
+        {/* Network Info */}
+        <div className='text-sm bg-gray-800 p-3 rounded-lg border border-gray-700 flex items-center justify-between'>
+          <span>Active Network: <span className='text-blue-400'>{networkName}</span></span>
+        </div>
+        
         {/* Search and Refresh Section */}
         <div className='flex gap-4'>
           <div className='flex-1 relative'>
-            <Search className='absolute left-3 top-1/2 transform -translate-y-1/2 text-blue-400 w-5 h-5' />
+            <Search className='absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5' />
             <input
               type='number'
-              placeholder='Enter battle ID to join'
+              placeholder='Search game by ID'
               value={searchQuery}
               onChange={(e) => setSearchQuery(Number(e.target.value))}
               className='w-full pl-10 pr-4 py-3 bg-gray-800 border-2 border-gray-700 rounded-lg focus:outline-none focus:border-blue-500 transition-colors text-white'
@@ -138,10 +142,11 @@ useEffect(() => {
           </div>
           <button
             onClick={handleSearch}
-            className='p-3 bg-gray-800 border-2 border-gray-700 rounded-lg hover:border-blue-500 transition-all duration-300 hover:bg-blue-500/10'
+            className='p-3 bg-gray-800 border-2 border-gray-700 rounded-lg hover:border-gray-600 transition-colors'
           >
-            <Search
-              className={`w-5 h-5 text-blue-400 ${
+            {/* // this should be search */}
+            <RefreshCcw
+              className={`w-5 h-5 text-gray-400 ${
                 isLoading ? 'animate-spin' : ''
               }`}
             />
@@ -151,23 +156,22 @@ useEffect(() => {
         {/* Active Games List */}
         <div className='space-y-4'>
           <div className='flex justify-between items-center'>
-            <h2 className='text-xl font-semibold text-gray-200 flex items-center'>
-              <Swords className="w-5 h-5 mr-2 text-blue-400" />
-              FIND YOUR BATTLE
+            <h2 className='text-xl font-semibold text-gray-200'>
+              Search game by ID
             </h2>
           </div>
 
           <div className='space-y-4'>
             {!activeGames ? (
-              <div className='text-center py-8 bg-gray-800 rounded-lg border border-gray-700 hover:border-blue-500 transition-all duration-300'>
+              <div className='text-center py-8 bg-gray-800 rounded-lg'>
                 <Users className='w-12 h-12 text-gray-600 mx-auto mb-3' />
-                <p className='text-gray-400'>No active battles found</p>
+                <p className='text-gray-400'>No active games found</p>
                 <button
                   onClick={handleSearch}
-                  className='mt-4 text-blue-400 hover:text-blue-300 text-sm flex items-center justify-center gap-2 transition-all duration-300 hover:scale-105'
+                  className='mt-4 text-blue-400 hover:text-blue-300 text-sm flex items-center justify-center gap-2'
                 >
                   <RefreshCcw className='w-4 h-4' />
-                  SEARCH FOR BATTLES
+                  Refresh games
                 </button>
               </div>
             ) : (

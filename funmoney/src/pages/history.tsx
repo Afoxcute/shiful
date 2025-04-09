@@ -15,9 +15,8 @@ import {
   ExternalLink,
 } from 'lucide-react';
 import { formatEther } from 'viem';
-import { useAccount, useReadContract } from 'wagmi';
-import { useContractInfo } from '../hooks/useContractInfo';
-import { useNetworkInfo } from '../hooks/useNetworkInfo';
+import { useAccount, useReadContract, useChainId } from 'wagmi';
+import { getContractInfo } from '../constants';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { Game, GameHistoryCardProps } from '../types';
@@ -27,19 +26,19 @@ import { Game, GameHistoryCardProps } from '../types';
 const GameHistory = () => {
   const account = useAccount()
   const router = useRouter();
-  const { abi, contractAddress } = useContractInfo();
-  const { tokenSymbol } = useNetworkInfo();
+  const chainId = useChainId();
+  const { abi, contractAddress, networkName } = getContractInfo(chainId);
 
     const gamesIdResult = useReadContract({
       abi,
-      address: contractAddress,
+      address: contractAddress as `0x${string}`,
       functionName: 'getUserGames',
       args: [account.address],
     });
 
     const contractGamesResult = useReadContract({
       abi,
-      address: contractAddress,
+      address: contractAddress as `0x${string}`,
       functionName: 'getGamesInfo',
       args: [gamesIdResult.data],
     });
@@ -58,6 +57,9 @@ const GameHistory = () => {
 
   return (
     <div className='space-y-4'>
+      <div className='text-sm bg-gray-800 p-3 rounded-lg border border-gray-700 flex items-center justify-between mb-4'>
+        <span>Active Network: <span className='text-blue-400'>{networkName}</span></span>
+      </div>
       <p className='text-white'>Game History</p>
       {gamesResult &&
         gamesResult.map((game) => (
@@ -65,7 +67,6 @@ const GameHistory = () => {
             key={game.gameId.toString()}
             game={game}
             userAddress={account.address}
-            tokenSymbol={tokenSymbol}
           />
         ))}
       {gamesResult && gamesResult.length < 1 && (
@@ -94,7 +95,7 @@ const GameHistory = () => {
 
 // 
 
-const GameHistoryCard:React.FC<GameHistoryCardProps> = ({ game, userAddress, tokenSymbol }) => {
+const GameHistoryCard:React.FC<GameHistoryCardProps> = ({ game, userAddress }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const router = useRouter();
 
@@ -108,19 +109,19 @@ const GameHistoryCard:React.FC<GameHistoryCardProps> = ({ game, userAddress, tok
     switch (Number(type)) {
       case 0:
         return {
-          name: 'LIGHTNING DUEL',
+          name: 'Quick Match',
           rounds: 1,
           icon: <Gamepad2 className='w-5 h-5 text-emerald-500' />,
         };
       case 1:
         return {
-          name: 'WARRIOR CLASH',
-          rounds: 2,
+          name: 'Best of Three',
+          rounds: 3,
           icon: <Swords className='w-5 h-5 text-blue-500' />,
         };
       case 2:
         return {
-          name: 'EPIC TOURNAMENT',
+          name: 'Championship',
           rounds: 5,
           icon: <Trophy className='w-5 h-5 text-yellow-500' />,
         };
@@ -232,7 +233,7 @@ const GameHistoryCard:React.FC<GameHistoryCardProps> = ({ game, userAddress, tok
                 </span>
               </div>
               <p className='text-sm text-slate-400'>
-                {gameTypeInfo.name} • {formattedStake} {tokenSymbol} Stake
+                {gameTypeInfo.name} • {formattedStake} ETH Stake
               </p>
             </div>
           </div>
