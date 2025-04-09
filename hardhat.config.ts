@@ -5,7 +5,7 @@ require("@nomicfoundation/hardhat-toolbox");
 // allows you to easily switch between the real endpoint
 // and the mock-rejection endpoint, without making changes
 // to your DApp's code
-const vennURL = process.env.VENN_NODE_URL || "https://ethereum-holesky.publicnode.com";
+const vennURL = process.env.VENN_NODE_URL || "https://signer2.testnet.venn.build/api/17000/sign";
 
 module.exports = {
   solidity: {

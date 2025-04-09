@@ -10,7 +10,6 @@ A decentralized Rock-Paper-Scissors game built on the Venn Holesky testnet. This
 - [Getting Started](#getting-started)
 - [Game Rules](#game-rules)
 - [Security Features](#security-features)
-- [Venn Integration](#venn-integration)
 - [Network Information](#network-information)
 
 ## Overview
@@ -36,8 +35,8 @@ This Rock-Paper-Scissors dApp demonstrates how traditional games can be securely
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/yourusername/rock-paper-scissors.git
-   cd rock-paper-scissors
+   git clone https://github.com/yourusername/shiful.git
+   cd shiful
    ```
 
 2. Install dependencies:
@@ -45,20 +44,14 @@ This Rock-Paper-Scissors dApp demonstrates how traditional games can be securely
    npm install
    ```
 
-3. Configure environment variables:
-   ```bash
-   cp .env.example .env.local
-   ```
-   Edit the `.env.local` file to set your Venn node URL and policy address.
-
-4. Start the development server:
+3. Start the development server:
    ```bash
    npm run dev
    ```
 
-5. Open your browser and navigate to http://localhost:3000
+4. Open your browser and navigate to http://localhost:3000
 
-6. Connect your wallet to the Venn Holesky testnet (Chain ID: 17000)
+5. Connect your wallet to the Venn Holesky testnet (Chain ID: 17000)
 
 ## Game Rules
 
@@ -100,67 +93,11 @@ This game integrates Venn's Firewall protection system to guard against:
 - Oracle manipulation affecting game outcomes
 - Generalized frontrunning attacks
 
-## Venn Integration
-
-This application includes a preliminary integration with Venn's transaction security system to protect players from MEV attacks and other blockchain vulnerabilities. The UI shows when a transaction is being verified by Venn before submission to the blockchain.
-
-### Current Implementation Status
-
-The Venn integration is currently in prototype phase:
-
-1. **UI Flow**: The application UI shows when transactions are being approved by Venn, providing user feedback during the security verification process.
-
-2. **JSON-RPC Integration**: The application makes a JSON-RPC call to the Venn node for transaction approval.
-
-3. **Mock Implementation**: For demonstration purposes, a mock implementation of the Venn SDK is included that simulates the approval process.
-
-### Planned Improvements
-
-To complete the Venn integration, the following steps are planned:
-
-1. **SDK Integration**: Replace the mock implementation with the official `@ironblocks/venn-dapp-sdk` package.
-
-2. **Transaction Processing**: Update the transaction flow to properly process Venn-signed transaction data.
-
-3. **Error Handling**: Enhance error handling and user feedback for rejected transactions.
-
-### Technical Implementation
-
-The application currently simulates Venn integration with the following approach:
-
-```typescript
-// Initialize Venn client
-const vennClient = new VennClient({ 
-  vennURL: process.env.NEXT_PUBLIC_VENN_NODE_URL, 
-  vennPolicyAddress: process.env.NEXT_PUBLIC_VENN_POLICY_ADDRESS 
-});
-
-// Send transaction data to Venn for approval
-await approveWithVenn({
-  from: userAddress,
-  to: contractAddress,
-  data: encodedFunctionData,
-  value: stake,
-  chainId
-});
-
-// Submit transaction to blockchain
-await writeContract({
-  address: contractAddress,
-  abi,
-  functionName: 'createGame',
-  args: [gameType],
-  value: stake
-});
-```
-
-When the integration is complete, the approved transaction data returned by Venn will be used for the blockchain submission.
-
 ## Network Information
 
 - **Network**: Venn Holesky Testnet
 - **Chain ID**: 17000
-- **RPC URL**: https://ethereum-holesky.publicnode.com
+- **RPC URL**: https://signer2.testnet.venn.build/api/17000/sign
 - **Explorer**: https://holesky.etherscan.io
 
 

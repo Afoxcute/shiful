@@ -9,13 +9,12 @@ import {
   RefreshCcw,
   ExternalLink,
 } from 'lucide-react';
-import { formatEther, parseEther, encodeFunctionData } from 'viem';
+import { formatEther, parseEther } from 'viem';
 import { useAccount, useReadContract, useWaitForTransactionReceipt, useWriteContract, useChainId } from 'wagmi';
 import { getContractInfo } from '../constants';
 import GameSearchCard from './GameSearchCard';
 import toast from 'react-hot-toast';
 import { extractErrorMessages } from '../utils';
-import { approveWithVenn } from '../utils/venn';
 import { Game } from '../types';
 import { ErrorBoundary } from 'react-error-boundary';
 
@@ -36,12 +35,11 @@ export default function JoinGame() {
               });
   const [activeGames, setActiveGames] = useState<Game>();
   const [isLoading, setIsLoading] = useState(false);
-  const [isVennApproving, setIsVennApproving] = useState(false);
   const [searchQuery, setSearchQuery] = useState<number>();
   const [refreshToken, setRefreshToken] = useState('')
   const account = useAccount()
   const userAddress = account.address || undefined
-  const isTxnLoading = isPending || isConfirming || isVennApproving
+  const isTxnLoading = isPending || isConfirming
 
   const proofedSearchQuery = searchQuery || 0
 
@@ -57,6 +55,10 @@ export default function JoinGame() {
       const data = gameResult.data as Game | undefined
 
 
+      
+
+
+
   const handleSearch = async () => {
     setIsLoading(true);
     try {
@@ -68,64 +70,32 @@ export default function JoinGame() {
     }
   };
 
-  const handleJoinGame = async(id: bigint | undefined, stake: bigint | undefined) => {
-    if (!id || !stake || !userAddress) return;
-    
+  const handleJoinGame = async(id: bigint | undefined,stake:bigint | undefined)=>{
     const toastId = toast.loading('Preparing to join game...',)
-    
-    try {
-      setIsVennApproving(true);
-      
-      // 1. Encode the function data
-      const data = encodeFunctionData({
-        abi,
-        functionName: 'joinGame',
-        args: [id],
-      });
-      
-      // 2. Get transaction parameters
-      const value = stake;
-      const from = userAddress;
-      const to = contractAddress as `0x${string}`;
-      
-      // 3. Approve the transaction with Venn
-      await approveWithVenn({
-        from,
-        to,
-        data,
-        value,
-        chainId
-      });
-      
-      setIsVennApproving(false);
-      
-      // 4. For now, since Venn integration is incomplete, let's use the standard approach
-      // When fully integrated with the real Venn SDK, this would be modified
-      await writeContract({
-        address: to,
-        abi,
-        functionName: 'joinGame',
-        args: [id],
-        value
-      });
-      
-      toast.loading('Waiting for transaction confirmation...', {
-        id: toastId,
-        icon: '⏳',
-        duration: 3000,
-      });
-    } catch (err) {
-      setIsVennApproving(false);
-      toast.error(
-        err instanceof Error ? err.message : 'Failed to join game',
-        {
+try {
+  await writeContract({
+    address: contractAddress as `0x${string}`,
+    abi,
+    functionName: 'joinGame',
+    args: [id],
+    value: (stake),
+  });
+        toast.loading('Waiting for transaction confirmation...', {
           id: toastId,
+          icon: '⏳',
           duration: 3000,
-          icon: '❌',
-        }
-      );
-      console.error('Error joining game:', err);
-    }
+        });
+} catch (err) {
+        toast.error(
+          err instanceof Error ? err.message : 'Failed to create game',
+          {
+            id: toastId,
+            duration: 3000,
+            icon: '❌',
+          }
+        );
+        console.error('Error joining game:', err);
+}
   }
 
 
@@ -208,9 +178,8 @@ useEffect(() => {
               <GameSearchCard
                 game={data}
                 isLoading={isTxnLoading}
-                onJoinGame={handleJoinGame}
+                onJoinGame={() => handleJoinGame(data?.gameId, data?.stake)}
                 userAddress={userAddress}
-                isVennApproving={isVennApproving}
               />
             )}
           </div>
