@@ -97,7 +97,7 @@ This game integrates Venn's Firewall protection system to guard against:
 
 - **Network**: Venn Holesky Testnet
 - **Chain ID**: 17000
-- **RPC URL**: https://signer2.testnet.venn.build/api/17000/sign
+- **RPC URL**: https://ethereum-holesky.publicnode.com
 - **Explorer**: https://holesky.etherscan.io
 
 
