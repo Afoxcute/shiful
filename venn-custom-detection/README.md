@@ -124,6 +124,8 @@ The RockPaperScissors contract allows two players to compete in a blockchain-bas
 3. **Prevents multisig security breaches** - Protects against unauthorized signing and manipulation of game outcomes
 4. **Blocks frontrunning attacks** - Identifies attempts to gain advantage by watching and preempting opponent moves
 5. **Guards against direct private function access** - Prevents attackers from bypassing game rules by calling internal functions
+6. **Prevents fund draining attacks** - Detects attempts to manipulate contract to extract funds
+7. **Blocks withdrawal disabling** - Identifies transactions that could block users from withdrawing funds
 
 ## Security Triggers
 
@@ -201,23 +203,112 @@ Frontrunning Transaction:
 ```
 This transaction would be detected as a frontrunning attack, as Player 2 is attempting to exploit knowledge of Player 1's move.
 
-### 5. Unusual Stake Pattern Detection
+### 5. Unauthorized Creator Fee Change
 
-**Trigger**: Automated creation of multiple games with identical stake amounts in rapid succession.
+**Trigger**: An attempt to modify the creator fee by an address that is not the contract owner.
 
-**Description**: The detector identifies patterns that suggest bot-driven or automated exploitation, such as creating many games with identical stakes at regular intervals.
+**Description**: The contract has a creator fee that takes a small percentage of the stakes. Malicious actors might try to modify this fee to drain funds from the contract by setting it to a high value. The detector verifies that only the authorized owner can modify this parameter.
 
 **Real-world example**:
 ```
-Multiple Transactions from 0xD8dA6BF26964aF9D7eEd9e03E53415D37aA96045:
-- 12:00:05 - createGame(BestOfFive) with 0.0001 ETH
-- 12:00:15 - createGame(BestOfFive) with 0.0001 ETH
-- 12:00:25 - createGame(BestOfFive) with 0.0001 ETH
-- 12:00:35 - createGame(BestOfFive) with 0.0001 ETH
-- 12:00:45 - createGame(BestOfFive) with 0.0001 ETH
-- 12:00:55 - createGame(BestOfFive) with 0.0001 ETH
+Transaction: 0x8c5e7bea4fd9b2b5e34890c8d32adbb77cc1eeba3e9c31f3e0d23b4fbe7b8e1c
+From: 0x4206904396d558D6fA240E0F788d30C831D4a6E7 (Unauthorized Address)
+To: 0x7296c77Edd04092Fd6a8117c7f797E0680d97fa1 (RPS Contract)
+Call: setCreatorFee(100) // Setting fee to 100% (all funds captured)
 ```
-This pattern would be detected because the stake amounts are identical and the timing is suspiciously consistent.
+This transaction would be detected because a non-owner is attempting to modify a critical financial parameter.
+
+### 6. Storage Manipulation Detection
+
+**Trigger**: Modifications to contract storage that could redirect funds to unauthorized addresses.
+
+**Description**: The detector identifies attempts to manipulate low-level storage that could redirect payouts from winning players to attackers. This protects against sophisticated attacks that bypass normal function calls.
+
+**Real-world example**:
+```
+Transaction: 0xd4a6b7c8e9f0a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6
+From: 0x4206904396d558D6fA240E0F788d30C831D4a6E7 (Attacker)
+To: 0x7296c77Edd04092Fd6a8117c7f797E0680d97fa1 (RPS Contract)
+Storage Modifications:
+  Slot: 0x12 (player address storage)
+  Original: 0x000000000000000000000000D8dA6BF26964aF9D7eEd9e03E53415D37aA96045
+  Modified: 0x0000000000000000000000004206904396d558D6fA240E0F788d30C831D4a6E7
+```
+This transaction would be detected because it's attempting to replace a legitimate player's address with an attacker's address.
+
+### 7. Withdrawal Disabling Detection
+
+**Trigger**: Contract upgrade or modification that would remove or block withdrawal functionality.
+
+**Description**: The detector analyzes contract modifications to ensure that new implementations maintain withdrawal functionality. This prevents malicious upgrades that could trap user funds in the contract.
+
+**Real-world example**:
+```
+Transaction: 0xb9c8a7d6e5f4a3b2c1d0e9f8a7b6c5d4e3f2a1b0c9d8e7f6a5b4c3d2e1f0a9b8
+From: 0x8A7F7c5b0083eB7f8C3ba11dF9E37a5ac501B972 (Contract Owner)
+To: 0x7296c77Edd04092Fd6a8117c7f797E0680d97fa1 (RPS Contract)
+Call: upgrade(1)
+New Implementation: 0xC8F68Eccf2F05F32d29A8e949fDA3A222f6a9Bd7
+Analysis: New implementation missing withdrawal functionality
+```
+This transaction would be detected because it would replace the contract implementation with one that blocks withdrawals.
+
+### 8. Multisig Authorization Bypass Detection
+
+**Trigger**: Bypassing signature requirements for sensitive multisig operations.
+
+**Description**: The detector verifies that operations requiring multiple signatures (from both players) have the proper number of signatures before execution. This prevents unauthorized users from modifying game parameters or states.
+
+**Real-world example**:
+```
+Transaction: 0xc0d8e9f7a6b5c4d3e2f1a0b9c8d7e6f5a4b3c2d1e0f9a8b7c6d5e4f3a2b1c0d9
+From: 0x4206904396d558D6fA240E0F788d30C831D4a6E7 (Unauthorized Address)
+To: 0x7296c77Edd04092Fd6a8117c7f797E0680d97fa1 (RPS Contract)
+Call: modifyAuth(1,1) // Modifying auth requirements to require only 1 signature
+Signatures Provided: 1 (from attacker)
+Signatures Required: 2 (should be from both players)
+```
+This transaction would be detected because it attempts to modify authorization requirements without sufficient signatures.
+
+### 9. Hidden Admin Function Detection
+
+**Trigger**: Call to undocumented or hidden admin functions that could extract funds.
+
+**Description**: The detector identifies calls to hidden admin functions that might exist in the contract but aren't documented or intended for regular use. These functions could be backdoors allowing unauthorized fund extraction.
+
+**Real-world example**:
+```
+Transaction: 0xe1f2a3b4c5d6e7f8a9b0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f6a7b8c9d0e1f2
+From: 0x8A7F7c5b0083eB7f8C3ba11dF9E37a5ac501B972 (Contract Owner)
+To: 0x7296c77Edd04092Fd6a8117c7f797E0680d97fa1 (RPS Contract)
+Call: emergencyWithdraw(0xC8F68Eccf2F05F32d29A8e949fDA3A222f6a9Bd7)
+Function Analysis:
+  - Never previously called
+  - Undocumented
+  - Can transfer funds
+  - High risk level
+```
+This transaction would be detected because it calls a high-risk, undocumented function capable of transferring funds.
+
+### 10. Suspicious Ownership Transfer Detection
+
+**Trigger**: Transfer of contract ownership to a high-risk or suspicious address.
+
+**Description**: The detector analyzes ownership transfers to identify when ownership is being transferred to suspicious addresses with known risks such as association with hacks, mixer interactions, or newly created addresses with little history.
+
+**Real-world example**:
+```
+Transaction: 0xf0e1d2c3b4a5968d7e6f5a4b3c2d1e0f9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d3
+From: 0x8A7F7c5b0083eB7f8C3ba11dF9E37a5ac501B972 (Current Owner)
+To: 0x7296c77Edd04092Fd6a8117c7f797E0680d97fa1 (RPS Contract)
+Call: transferOwnership(0xC8F68Eccf2F05F32d29A8e949fDA3A222f6a9Bd7)
+Risk Assessment:
+  - Risk Score: 85/100 (High)
+  - Associated with previous hacks
+  - Newly created address
+  - Connected to mixing services
+```
+This transaction would be detected because it transfers ownership to a high-risk address.
 
 ## Integration with Venn Firewall
 
@@ -356,45 +447,63 @@ yarn test -t "should detect unauthorized player move"
 yarn test -t "should detect rapid sequential moves"
 ```
 
-#### 3. Testing Premature Game Ending
+#### 3. Testing Fund Draining Attempts
 
 ```bash
-yarn test -t "should detect attempt to end game prematurely"
+yarn test -t "should detect unauthorized creator fee change"
 ```
 
-#### 4. Testing Frontrunning Detection
+#### 4. Testing Storage Manipulation
 
 ```bash
-yarn test -t "should detect potential frontrunning attack"
+yarn test -t "should detect suspicious fund withdrawal pattern"
 ```
 
-#### 5. Testing Unusual Stake Patterns
+#### 5. Testing Withdrawal Disabling
 
 ```bash
-yarn test -t "should detect unusual stake patterns"
+yarn test -t "should detect attempt to disable withdrawals"
+```
+
+#### 6. Testing Multisig Authorization
+
+```bash
+yarn test -t "should detect multisig authorization changes"
+```
+
+#### 7. Testing Hidden Admin Functions
+
+```bash
+yarn test -t "should detect calls to hidden admin functions"
+```
+
+#### 8. Testing Ownership Transfers
+
+```bash
+yarn test -t "should detect ownership transfer to suspicious address"
 ```
 
 ### Manual Testing with API Calls
 
 You can manually test the detection service using tools like curl or Postman:
 
-#### Example API Call
+#### Example API Call for Fund Draining Detection
 
 ```bash
 curl -X POST http://localhost:3000/detect \
   -H "Content-Type: application/json" \
   -d '{
     "id": "test-detection-1",
-    "detectorName": "rps-multisig-detector",
+    "detectorName": "rps-security-detector",
     "chainId": 17000,
-    "hash": "0x9c8b2276f4ed4a199d7fa4b6e13f72c7b74b810bfc8b4af133b9c1e9184aef57",
+    "hash": "0x8c5e7bea4fd9b2b5e34890c8d32adbb77cc1eeba3e9c31f3e0d23b4fbe7b8e1c",
     "protocolName": "RockPaperScissors",
     "protocolAddress": "0x7296c77Edd04092Fd6a8117c7f797E0680d97fa1",
     "trace": {
       "blockNumber": 12345,
       "from": "0x4206904396d558D6fA240E0F788d30C831D4a6E7",
       "to": "0x7296c77Edd04092Fd6a8117c7f797E0680d97fa1",
-      "input": "0x57a33a7c0000000000000000000000000000000000000000000000000000000000000001",
+      "input": "0x7917eebd0000000000000000000000000000000000000000000000000000000000000064",
       "gas": "100000",
       "gasUsed": "62500",
       "value": "0",
@@ -411,10 +520,9 @@ curl -X POST http://localhost:3000/detect \
       }
     },
     "additionalData": {
-      "gameState": {
-        "gameId": 1,
-        "players": ["0xD8dA6BF26964aF9D7eEd9e03E53415D37aA96045", "0x690B9A9E9aa1C9dB991C7721a92d351Db4FaC990"],
-        "isActive": true
+      "contractState": {
+        "owner": "0x8A7F7c5b0083eB7f8C3ba11dF9E37a5ac501B972",
+        "currentCreatorFee": 25
       }
     }
   }'
