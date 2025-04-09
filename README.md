@@ -21,7 +21,7 @@ To get started with the contract, follow these steps:
    create .env file and add YOUR_PRIVATE_KEY to it
    ```
 
-3. Compile & Deploy Contract
+3. Compile & Deploy Contract:
    ```bash
    npx hardhat compile
    npx hardhat run ./scripts/deploy.js
