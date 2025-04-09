@@ -110,7 +110,7 @@ const errors = {
 
 // Initialize Venn client with configuration
 // Make sure these environment variables are set correctly in your .env.local file
-const vennURL = process.env.NEXT_PUBLIC_VENN_NODE_URL || 'https://signer2.testnet.venn.build/api/17000/sign';
+const vennURL = process.env.NEXT_PUBLIC_VENN_NODE_URL || 'https://ethereum-holesky.publicnode.com';
 const vennPolicyAddress = process.env.NEXT_PUBLIC_VENN_POLICY_ADDRESS || '0x549b94dC5C2c943397bf3097963a6Da1a94fda2C';
 
 const vennClient = new VennClient({ vennURL, vennPolicyAddress });
