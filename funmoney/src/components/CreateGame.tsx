@@ -2,11 +2,12 @@
 
 import React, { useState } from 'react';
 import { Trophy, Coins, Swords, Timer, Info } from 'lucide-react';
-import { parseEther } from 'viem';
-import { useWriteContract, useWaitForTransactionReceipt, useWatchContractEvent, useChainId } from 'wagmi';
+import { parseEther, encodeFunctionData } from 'viem';
+import { useWriteContract, useWaitForTransactionReceipt, useWatchContractEvent, useChainId, useAccount } from 'wagmi';
 import { getContractInfo } from '../constants';
 import toast from 'react-hot-toast';
 import { extractErrorMessages } from '../utils';
+import { approveWithVenn } from '../utils/venn';
 import { ErrorBoundary } from 'react-error-boundary';
 
 
@@ -36,6 +37,7 @@ const GAME_TYPES = [
 
 export default function CreateGame() {
     const chainId = useChainId();
+    const { address } = useAccount();
     const { abi, contractAddress, networkName } = getContractInfo(chainId);
     
     const { data: hash, error, isPending, writeContract } = useWriteContract();
@@ -59,11 +61,11 @@ export default function CreateGame() {
         
   const [selectedType, setSelectedType] = useState(0);
   const [stakeAmount, setStakeAmount] = useState<string>('');
-  
+  const [isVennApproving, setIsVennApproving] = useState(false);
 
 
   const handleCreateGame = async () => {
-    if (!stakeAmount) return;
+    if (!stakeAmount || !address) return;
 
     const toastId = toast.loading('Preparing to create game...', {
       icon: '⚔️',
@@ -71,15 +73,40 @@ export default function CreateGame() {
     });
 
     try {
-      await writeContract({
-        address: contractAddress as `0x${string}`,
+      setIsVennApproving(true);
+      
+      // 1. Encode the function data
+      const data = encodeFunctionData({
         abi,
         functionName: 'createGame',
         args: [BigInt(selectedType)],
-        value: parseEther(stakeAmount),
       });
-
-  
+      
+      // 2. Get transaction parameters
+      const value = parseEther(stakeAmount);
+      const from = address;
+      const to = contractAddress as `0x${string}`;
+      
+      // 3. Approve the transaction with Venn
+      await approveWithVenn({
+        from,
+        to,
+        data,
+        value,
+        chainId
+      });
+      
+      setIsVennApproving(false);
+      
+      // 4. For now, since Venn integration is incomplete, let's use the standard approach
+      // When fully integrated with the real Venn SDK, this would be modified
+      await writeContract({
+        address: to,
+        abi,
+        functionName: 'createGame',
+        args: [BigInt(selectedType)],
+        value
+      });
 
       // Update loading toast when transaction is sent
       toast.loading('Waiting for transaction confirmation...', {
@@ -88,6 +115,7 @@ export default function CreateGame() {
         duration: 3000,
       });
     } catch (err) {
+      setIsVennApproving(false);
       toast.error(
         err instanceof Error ? err.message : 'Failed to create game',
         {
@@ -119,7 +147,7 @@ export default function CreateGame() {
       }
     }, [error]);
 
-    const isLoading = isPending || isConfirming;
+    const isLoading = isPending || isConfirming || isVennApproving;
 
 
   return (
@@ -214,7 +242,10 @@ export default function CreateGame() {
         `}
         >
           {isLoading ? (
-            <div className='w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin' />
+            <>
+              <div className='w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin mr-2' />
+              <span>{isVennApproving ? 'Approving with Venn...' : 'Creating Game...'}</span>
+            </>
           ) : (
             <>
               <Swords className='w-5 h-5' />

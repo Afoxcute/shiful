@@ -180,7 +180,7 @@ export class DetectionService {
         return this.createResponse(request, false);
     }
     
-    /**
+        /**
      * Checks if the transaction is part of a sandwich attack pattern
      * 
      * Sandwich attacks occur when an attacker observes a pending transaction,

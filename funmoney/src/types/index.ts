@@ -18,6 +18,7 @@ export interface GameSearchCardProps {
   onJoinGame: (gameId: bigint, stake: bigint) => void;
   isLoading: boolean;
   userAddress: `0x${string}` | undefined;
+  isVennApproving?: boolean;
 }
 
 export interface GameHistoryCardProps {

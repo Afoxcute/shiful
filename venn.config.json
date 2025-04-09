@@ -1,0 +1,11 @@
+{
+    "networks": {
+        "holesky": {
+            "contracts": {
+                "RockPaperScissors": "0x7296c77Edd04092Fd6a8117c7f797E0680d97fa1"
+            },
+
+            "policyAddress": "0x549b94dC5C2c943397bf3097963a6Da1a94fda2C"
+        }
+    }
+}

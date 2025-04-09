@@ -9,6 +9,7 @@ import {
   CircleDollarSign,
   CheckCircle2,
   Clock,
+  Shield,
 } from 'lucide-react';
 import { formatEther } from 'viem';
 import Link from 'next/link';
@@ -19,6 +20,7 @@ const GameSearchCard: React.FC<GameSearchCardProps> = ({
   onJoinGame,
   isLoading,
   userAddress,
+  isVennApproving,
 }) => {
   const getGameTypeInfo = (type: number) => {
     switch (Number(type)) {
@@ -156,24 +158,23 @@ const GameSearchCard: React.FC<GameSearchCardProps> = ({
           `}
           >
             <span className='flex items-center justify-center gap-2'>
-              {/* {hasSecondPlayer ? (
-                <>
-                  <Users className='h-5 w-5' />
-                  Game Full
-                </>
-              ) : (
-                <>
-                  <User className='h-5 w-5' />
-                  Join Game
-                </>
-              )} */}
               {hasSecondPlayer ? (
                 <>
                   <Users className='h-5 w-5' />
                   Game Full
                 </>
               ) : isLoading ? (
-                <div className='w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin' />
+                <>
+                  <div className='w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin mr-2' />
+                  {isVennApproving ? (
+                    <span className='flex items-center'>
+                      <Shield className='h-5 w-5 text-blue-300 mr-2' />
+                      Approving with Venn...
+                    </span>
+                  ) : (
+                    <span>Joining Game...</span>
+                  )}
+                </>
               ) : (
                 <>
                   <User className='h-5 w-5' />
