@@ -339,25 +339,7 @@ private static isSandwichAttackPattern(request: DetectionRequest): boolean {
         return (beforeImpact + afterImpact) > 1.0;
     }
 }
-
-// Time-bandit attack detection with proper null checking
-private static isTimeBanditAttack(request: DetectionRequest): boolean {
-    const blockchainContext = request.additionalData?.blockchainContext as BlockchainContext;
-    if (!blockchainContext) {
-        return false;
-    }
-    
-    // Check for blockchain reorganization with proper null check for reorgDepth
-    if (blockchainContext.isReorg && blockchainContext.reorgDepth !== undefined && blockchainContext.reorgDepth > 2) {
-        // Deep reorgs (>2 blocks) are suspicious in MEV context
-        return true;
-    }
-    
-    return false;
-}
 ```
-
-Note: The `isTimeBanditAttack` method ensures that `reorgDepth` is properly checked with `!== undefined` rather than a simple truthy check. This is critical because a valid reorganization depth of `0` would incorrectly evaluate to `false` in a truthy check, but is a defined value that should be properly evaluated when comparing to the threshold of `2`. This precision in null checking is essential for correctly detecting time-bandit attacks with various reorganization depths.
 
 ## Integration with Venn Firewall
 
