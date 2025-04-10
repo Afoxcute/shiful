@@ -27,7 +27,6 @@ import {
   useReadContract,
   useWaitForTransactionReceipt,
   useWatchContractEvent,
-  useWriteContract,
   useChainId,
 } from 'wagmi';
 import { getContractInfo } from '../../constants';
@@ -36,6 +35,7 @@ import toast from 'react-hot-toast';
 import Link from 'next/link';
 import { Game, MoveColor, MoveType } from '../../types';
 import { ErrorBoundary } from 'react-error-boundary';
+import { useVennProtectedWrite } from '../../hooks/useVennProtectedWrite';
 
 
 const GameInterface = () => {
@@ -58,7 +58,7 @@ const GameInterface = () => {
     scopeKey: refreshToken,
   });
 
-  const { data: hash, error, isPending, writeContract } = useWriteContract();
+  const { hash, error, isPending, protectedWrite } = useVennProtectedWrite();
 
   const { isLoading: isConfirming, isSuccess: isConfirmed } =
     useWaitForTransactionReceipt({
@@ -108,7 +108,7 @@ const GameInterface = () => {
 
   const handleMakeMove = async () => {
     try {
-      await writeContract({
+      await protectedWrite({
         address: contractAddress as `0x${string}`,
         abi,
         functionName: 'makeMove',

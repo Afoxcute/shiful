@@ -10,13 +10,14 @@ import {
   ExternalLink,
 } from 'lucide-react';
 import { formatEther, parseEther } from 'viem';
-import { useAccount, useReadContract, useWaitForTransactionReceipt, useWriteContract, useChainId } from 'wagmi';
+import { useAccount, useReadContract, useWaitForTransactionReceipt, useChainId } from 'wagmi';
 import { getContractInfo } from '../constants';
 import GameSearchCard from './GameSearchCard';
 import toast from 'react-hot-toast';
 import { extractErrorMessages } from '../utils';
 import { Game } from '../types';
 import { ErrorBoundary } from 'react-error-boundary';
+import { useVennProtectedWrite } from '../hooks/useVennProtectedWrite';
 
 
 export default function JoinGame() {
@@ -24,11 +25,11 @@ export default function JoinGame() {
       const { abi, contractAddress, networkName } = getContractInfo(chainId);
       
       const {
-        data: hash,
+        hash,
         error,
         isPending,
-        writeContract,
-      } = useWriteContract();
+        protectedWrite,
+      } = useVennProtectedWrite();
             const { isLoading: isConfirming, isSuccess: isConfirmed } =
               useWaitForTransactionReceipt({
                 hash,
@@ -72,30 +73,30 @@ export default function JoinGame() {
 
   const handleJoinGame = async(id: bigint | undefined,stake:bigint | undefined)=>{
     const toastId = toast.loading('Preparing to join game...',)
-try {
-  await writeContract({
-    address: contractAddress as `0x${string}`,
-    abi,
-    functionName: 'joinGame',
-    args: [id],
-    value: (stake),
-  });
-        toast.loading('Waiting for transaction confirmation...', {
+    try {
+      await protectedWrite({
+        address: contractAddress as `0x${string}`,
+        abi,
+        functionName: 'joinGame',
+        args: [id],
+        value: (stake),
+      });
+      toast.loading('Waiting for transaction confirmation...', {
+        id: toastId,
+        icon: '⏳',
+        duration: 3000,
+      });
+    } catch (err) {
+      toast.error(
+        err instanceof Error ? err.message : 'Failed to create game',
+        {
           id: toastId,
-          icon: '⏳',
           duration: 3000,
-        });
-} catch (err) {
-        toast.error(
-          err instanceof Error ? err.message : 'Failed to create game',
-          {
-            id: toastId,
-            duration: 3000,
-            icon: '❌',
-          }
-        );
-        console.error('Error joining game:', err);
-}
+          icon: '❌',
+        }
+      );
+      console.error('Error joining game:', err);
+    }
   }
 
 

@@ -3,11 +3,12 @@
 import React, { useState } from 'react';
 import { Trophy, Coins, Swords, Timer, Info } from 'lucide-react';
 import { parseEther } from 'viem';
-import { useWriteContract, useWaitForTransactionReceipt, useWatchContractEvent, useChainId } from 'wagmi';
+import { useWaitForTransactionReceipt, useWatchContractEvent, useChainId } from 'wagmi';
 import { getContractInfo } from '../constants';
 import toast from 'react-hot-toast';
 import { extractErrorMessages } from '../utils';
 import { ErrorBoundary } from 'react-error-boundary';
+import { useVennProtectedWrite } from '../hooks/useVennProtectedWrite';
 
 
 const GAME_TYPES = [
@@ -38,24 +39,24 @@ export default function CreateGame() {
     const chainId = useChainId();
     const { abi, contractAddress, networkName } = getContractInfo(chainId);
     
-    const { data: hash, error, isPending, writeContract } = useWriteContract();
+    const { hash, error, isPending, protectedWrite } = useVennProtectedWrite();
 
-          useWatchContractEvent({
-            address: contractAddress as `0x${string}`,
-            abi,
-            eventName: 'GameCreated',
-            onLogs(logs: any) {
-              const createdGameID = logs && logs[0]?.args?.gameId
-                    toast.success(`Game of ID ${createdGameID} created`, {
-                      duration: 3000,
-                    });
-            },
-          });
+    useWatchContractEvent({
+      address: contractAddress as `0x${string}`,
+      abi,
+      eventName: 'GameCreated',
+      onLogs(logs: any) {
+        const createdGameID = logs && logs[0]?.args?.gameId
+              toast.success(`Game of ID ${createdGameID} created`, {
+                duration: 3000,
+              });
+      },
+    });
     
-      const { isLoading: isConfirming, isSuccess: isConfirmed } =
-        useWaitForTransactionReceipt({
-          hash,
-        });
+    const { isLoading: isConfirming, isSuccess: isConfirmed } =
+      useWaitForTransactionReceipt({
+        hash,
+      });
         
   const [selectedType, setSelectedType] = useState(0);
   const [stakeAmount, setStakeAmount] = useState<string>('');
@@ -71,7 +72,7 @@ export default function CreateGame() {
     });
 
     try {
-      await writeContract({
+      await protectedWrite({
         address: contractAddress as `0x${string}`,
         abi,
         functionName: 'createGame',
